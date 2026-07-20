@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "picasso-registry"
+dynamic = ["version"]
+description = "Provenance & metrics database (service + client) for the DNA-PAINT automation stack"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "MIB Lab" }]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "sqlalchemy>=2.0",
+    "pydantic>=2.6",
+    "alembic>=1.13",
+    "python-ulid>=2.2",
+]
+
+[project.optional-dependencies]
+client = ["requests>=2.31"]
+dev = ["pytest>=8", "httpx>=0.27", "black==25.9.0", "flake8>=7", "Flake8-pyproject>=1.2", "pre-commit>=3.7"]
+
+[project.scripts]
+picasso-registry = "picasso_registry.app:main"
+
+[tool.setuptools_scm]
+write_to = "src/picasso_registry/_version.py"
+fallback_version = "0.0.1.dev0"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+target-version = ["py310"]
+line-length = 79
+extend-exclude = '_version.py'
+
+[tool.flake8]
+max-line-length = 79
+extend-ignore = ["E203", "W503"]
+exclude = [".git", "__pycache__", "build", "dist", "src/picasso_registry/_version.py"]
