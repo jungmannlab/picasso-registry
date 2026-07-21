@@ -122,18 +122,23 @@ docs live in `../../planning/` — start from its document map.
 This repo **owns** the registry contract. A contract change is its own work order
 that updates the client and all dependents together.
 
-- **picasso-registry OpenAPI spec + pydantic schemas** (this repo). After S0B-1
-  these become the in-tree source of truth: SQLAlchemy models + pydantic schemas
-  + FastAPI app + an exported **OpenAPI spec** + the generated `picasso_registry`
-  client, all here under `src/picasso_registry/`.
+- **picasso-registry OpenAPI spec + pydantic schemas** (this repo). As of S0B-1
+  these are the in-tree source of truth: SQLAlchemy `models` + pydantic
+  `schemas` + the FastAPI `app` under `src/picasso_registry/`, the thin
+  `client`, and the exported **OpenAPI spec** at `openapi.json` (repo root).
+  Regenerate the spec after any schema/route change with
+  `python -m picasso_registry.export_openapi` (a test enforces sync). Alembic
+  migrations live in `alembic/`.
 - **Shared data contracts** (after S0B-2): the metric-vector schema, the
   workflow-YAML schema, the `localize_frames(frames, info, params) -> locs`
   signature, and picasso-workflow's `ModuleSpec`
   (`../picasso-workflow/picasso_workflow/modulespec.py`, already implemented).
 
-_(These contract artifacts are **planned, not yet in-tree** — they are specified
-in design-doc Part VI and briefs S0B-1 / S0B-2 above. Do not treat the exported
-OpenAPI/client paths as resolvable until S0B lands.)_
+_(The picasso-registry artifacts above are **in-tree as of S0B-1**. The
+**shared data contracts** (metric-vector schema, workflow-YAML schema,
+`localize_frames` signature) are still **planned** — specified in design-doc
+Part VI and brief S0B-2 — except picasso-workflow's `ModuleSpec`, already
+implemented.)_
 
 ## Notes for editing
 
