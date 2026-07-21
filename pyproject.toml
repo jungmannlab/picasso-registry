@@ -40,5 +40,5 @@ extend-exclude = '_version.py'
 
 [tool.flake8]
 max-line-length = 79
-extend-ignore = ["E203", "W503"]
+extend-ignore = ["E203", "E501", "W503"]
 exclude = [".git", "__pycache__", "build", "dist", "src/picasso_registry/_version.py"]

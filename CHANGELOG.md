@@ -15,6 +15,11 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
   (db, models, schemas, app, client) with a passing smoke test.
 
 ### Changed
+- Aligned style & repo management with the DNA-PAINT stack conventions (S0A-2):
+  flake8 now ignores `E501` (Black owns line wrapping @79), matching
+  picasso-workflow's rule; tagged an initial `v0.0.1` so setuptools-scm resolves
+  a version from the tag; confirmed `pip install -e .` resolves from wheels on
+  the 3.10 container with no source builds. No behaviour change.
 - Aligned `CLAUDE.md` with the DNA-PAINT stack standing-context template (S0A-1):
   current branch, build/test/lint commands, versioning + changelog-on-release
   rule, a repo-specific architecture summary, standing pointers into the shared
