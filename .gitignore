@@ -8,3 +8,7 @@ dist/
 src/*/_version.py
 .coverage
 .pytest_cache/
+
+# Claude Code: keep CLAUDE.md tracked; ignore local settings / personal notes
+.claude/
+CLAUDE.local.md
