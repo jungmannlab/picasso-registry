@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ulid import ULID
 
@@ -23,6 +24,14 @@ class UnknownParent(Exception):
     def __init__(self, parent_id: str) -> None:
         super().__init__(f"unknown parent_id: {parent_id!r}")
         self.parent_id = parent_id
+
+
+class Conflict(Exception):
+    """An insert violated a uniqueness/integrity constraint.
+
+    Most often a re-posted client-minted id (e.g. a retried acquisition_run
+    after a lost response); surfaced as HTTP 409 rather than a 500.
+    """
 
 
 def new_id() -> str:
@@ -55,50 +64,57 @@ def _columns(orm_cls: type) -> set[str]:
     return set(orm_cls.__table__.columns.keys())
 
 
-def _known(orm_cls: type, data: dict, *, with_id: bool) -> dict[str, Any]:
+def _row(orm_cls: type, data: dict) -> dict[str, Any]:
+    """Column dict for ``orm_cls`` from ``data``.
+
+    Keeps known, non-``None`` columns (so column defaults apply and absent
+    features stay NULL). When the table has a JSON ``extra`` column, unknown
+    top-level keys are folded into it rather than dropped, so novel,
+    not-yet-typed fields are preserved in this append-only store. An explicit
+    ``extra`` dict wins over a loose top-level key of the same name.
+    """
     cols = _columns(orm_cls)
-    out = {k: v for k, v in data.items() if k in cols and v is not None}
-    if with_id and not out.get("id"):
-        out["id"] = new_id()
-    return out
+    known = {k: v for k, v in data.items() if k in cols and v is not None}
+    if "extra" in cols:
+        merged = {k: v for k, v in data.items() if k not in cols}
+        merged.update(known.get("extra") or {})
+        if merged:
+            known["extra"] = merged
+    return known
+
+
+def _insert(session: Session, obj: Any, *, commit: bool) -> Any:
+    """Add + flush ``obj``, mapping an integrity violation to ``Conflict``.
+
+    On an ``IntegrityError`` (e.g. re-posting an already-stored client-minted
+    id) the transaction is rolled back and a ``Conflict`` is raised, so the
+    route returns a clean 409 instead of a 500 with a SQL stack trace.
+    """
+    session.add(obj)
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        session.rollback()
+        raise Conflict(f"{obj.__tablename__}: {exc.orig}") from exc
+    if commit:
+        session.commit()
+    return obj
 
 
 def persist(
     session: Session, orm_cls: type, data: dict, *, commit: bool = True
 ):
-    """Insert one row of ``orm_cls`` from ``data`` (extra keys ignored)."""
-    obj = orm_cls(**_known(orm_cls, data, with_id=True))
-    session.add(obj)
-    session.flush()
-    if commit:
-        session.commit()
-    return obj
+    """Insert one row of ``orm_cls`` from ``data``.
 
-
-def persist_metrics(
-    session: Session, orm_cls: type, data: dict, *, commit: bool = True
-):
-    """Insert a metrics row, folding unknown keys into the JSON ``extra``.
-
-    ``orm_cls`` is always :class:`models.Metrics`; the signature matches
-    :func:`persist` so both can be used interchangeably by the route factory
-    and the bulk-ingest loop.
+    Unknown keys are folded into the ``extra`` column when the table has one,
+    otherwise ignored. A missing ``id`` is minted; tables whose id is
+    client-supplied (e.g. acquisition_run) require a non-empty id at the
+    schema layer, so a blank id is rejected before it reaches here.
     """
-    cols = _columns(orm_cls)
-    known = {k: v for k, v in data.items() if k in cols and v is not None}
-    unknown = {k: v for k, v in data.items() if k not in cols}
-    extra = dict(known.get("extra") or {})
-    extra.update(unknown)
-    if extra:
-        known["extra"] = extra
-    if not known.get("id"):
-        known["id"] = new_id()
-    obj = orm_cls(**known)
-    session.add(obj)
-    session.flush()
-    if commit:
-        session.commit()
-    return obj
+    row = _row(orm_cls, data)
+    if not row.get("id"):
+        row["id"] = new_id()
+    return _insert(session, orm_cls(**row), commit=commit)
 
 
 def persist_taxonomy(
@@ -106,26 +122,24 @@ def persist_taxonomy(
 ):
     """Insert a taxonomy node, computing its materialized ``path``.
 
-    The parent must already be persisted (bulk-ingest orders taxonomy first and
-    flushes each row) so the path chain resolves.
+    The ``path`` is always derived from the parent chain — a caller-supplied
+    ``path`` is ignored so it can never contradict ``parent_id`` and corrupt
+    the ancestry that cohort distance and the node-defaults cascade depend on
+    (wrong forever in this append-only store). The parent must already be
+    persisted (bulk-ingest orders taxonomy first and flushes each row) so the
+    chain resolves.
     """
     data = dict(data)
     if not data.get("id"):
         data["id"] = new_id()
-    if not data.get("path"):
-        parent_path = None
-        parent_id = data.get("parent_id")
-        if parent_id:
-            parent = session.get(models.SampleTaxonomy, parent_id)
-            if parent is None:
-                # Refuse to silently root an orphan: the append-only path
-                # would be wrong forever. The parent must be created first.
-                raise UnknownParent(parent_id)
-            parent_path = parent.path
-        data["path"] = build_path(data["id"], parent_path)
-    obj = orm_cls(**_known(orm_cls, data, with_id=False))
-    session.add(obj)
-    session.flush()
-    if commit:
-        session.commit()
-    return obj
+    parent_path = None
+    parent_id = data.get("parent_id")
+    if parent_id:
+        parent = session.get(models.SampleTaxonomy, parent_id)
+        if parent is None:
+            # Refuse to silently root an orphan: the append-only path
+            # would be wrong forever. The parent must be created first.
+            raise UnknownParent(parent_id)
+        parent_path = parent.path
+    data["path"] = build_path(data["id"], parent_path)
+    return _insert(session, orm_cls(**_row(orm_cls, data)), commit=commit)

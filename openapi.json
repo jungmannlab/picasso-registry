@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "AcquisitionRun": {
+        "additionalProperties": true,
         "properties": {
           "config_yaml": {
             "anyOf": [
@@ -50,6 +51,7 @@
             "title": "Finished At"
           },
           "id": {
+            "minLength": 1,
             "title": "Id",
             "type": "string"
           },
@@ -139,6 +141,7 @@
         "type": "object"
       },
       "AnalysisRun": {
+        "additionalProperties": true,
         "properties": {
           "acquisition_run_id": {
             "anyOf": [
@@ -599,6 +602,7 @@
         "type": "object"
       },
       "Environment": {
+        "additionalProperties": true,
         "properties": {
           "extra": {
             "anyOf": [
@@ -717,6 +721,7 @@
         "type": "object"
       },
       "Experiment": {
+        "additionalProperties": true,
         "properties": {
           "buffer": {
             "anyOf": [
@@ -963,6 +968,7 @@
         "type": "object"
       },
       "FluidicsRound": {
+        "additionalProperties": true,
         "properties": {
           "acquisition_run_id": {
             "anyOf": [
@@ -1081,6 +1087,7 @@
         "type": "object"
       },
       "Fov": {
+        "additionalProperties": true,
         "properties": {
           "acquisition_run_id": {
             "anyOf": [
@@ -1256,6 +1263,7 @@
         "type": "object"
       },
       "Illumination": {
+        "additionalProperties": true,
         "properties": {
           "extra": {
             "anyOf": [
@@ -2110,6 +2118,7 @@
         "type": "object"
       },
       "ReagentProvenance": {
+        "additionalProperties": true,
         "properties": {
           "docking_design_id": {
             "anyOf": [
@@ -2184,6 +2193,7 @@
         "type": "object"
       },
       "ResourceUsage": {
+        "additionalProperties": true,
         "properties": {
           "analysis_run_id": {
             "anyOf": [
@@ -2334,6 +2344,7 @@
         "type": "object"
       },
       "SampleMorphology": {
+        "additionalProperties": true,
         "properties": {
           "autofluorescence": {
             "anyOf": [

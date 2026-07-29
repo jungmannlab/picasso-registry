@@ -55,3 +55,27 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
   rule, a repo-specific architecture summary, standing pointers into the shared
   `planning/` docs, and the contract locations. `.gitignore` now keeps `.claude/`
   and `CLAUDE.local.md` ignored while `CLAUDE.md` stays tracked.
+- `persist`/`_row` now fold unknown top-level keys into the JSON `extra` column
+  for every table that has one (not just `metrics`), so novel provenance fields
+  are preserved rather than silently dropped; an explicit `extra` dict wins over
+  a loose top-level key of the same name. `persist_metrics` folded into
+  `persist` (one code path).
+
+### Fixed
+- **Post-merge code-review findings (S0B-1).**
+- `GET /cohort` root filter escapes SQL `LIKE` metacharacters, so a taxon id
+  containing `_`/`%` (e.g. `a_b`) can no longer match sibling roots (`axb`).
+- Unknown provenance fields posted to any table with an `extra` column are
+  preserved in `extra` instead of being silently discarded.
+- A caller-supplied `sample_taxonomy.path` is now ignored; the materialized
+  path is always derived from `parent_id`, so it can't contradict the tree and
+  corrupt cohort distance / node-defaults inheritance.
+- Re-posting an already-stored `acquisition_run` id returns **409 Conflict**
+  (idempotent-retry safe) instead of a 500 with a SQL stack trace.
+- An empty-string `acquisition_run.id` is rejected (422) instead of being
+  replaced by a server-minted ULID, upholding the run_id invariant.
+- `GET /cohort` selects only the columns it ranks on (not whole ORM rows) and
+  falls back to exact-node matches for a path-less taxon rather than scanning
+  every root.
+- The migration-vs-models test now checks per-table columns and nullability,
+  not just the set of table names, catching column drift in CI.

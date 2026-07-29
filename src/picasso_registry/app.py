@@ -71,7 +71,7 @@ REGISTRY = [
         crud.persist,
     ),
     ("analysis_run", schemas.AnalysisRun, models.AnalysisRun, crud.persist),
-    ("metrics", schemas.Metrics, models.Metrics, crud.persist_metrics),
+    ("metrics", schemas.Metrics, models.Metrics, crud.persist),
     (
         "resource_usage",
         schemas.ResourceUsage,
@@ -145,6 +145,11 @@ def create_app() -> FastAPI:
 
     app.add_exception_handler(crud.UnknownParent, _unknown_parent)
 
+    def _conflict(request: Request, exc: crud.Conflict):
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    app.add_exception_handler(crud.Conflict, _conflict)
+
     @app.get("/health", tags=["meta"])
     def health() -> dict:
         return {"status": "ok", "version": __version__}
@@ -169,11 +174,18 @@ def create_app() -> FastAPI:
         node = session.get(models.SampleTaxonomy, taxon_id)
         if node is None:
             raise HTTPException(status_code=404, detail="unknown taxon")
+        # Select only the columns the cohort needs (not whole ORM rows) so a
+        # busy taxonomy root doesn't materialize entire entities just to rank
+        # them. The joins are intentionally INNER: a run with no experiment,
+        # or whose experiment has no sample taxon, has no tree distance and so
+        # is not a cohort member (use GET /acquisition_run for all runs).
         query = (
             session.query(
-                models.AcquisitionRun,
-                models.Experiment,
-                models.SampleTaxonomy,
+                models.AcquisitionRun.id,
+                models.Experiment.id,
+                models.SampleTaxonomy.id,
+                models.SampleTaxonomy.name,
+                models.SampleTaxonomy.path,
             )
             .join(
                 models.Experiment,
@@ -185,19 +197,28 @@ def create_app() -> FastAPI:
             )
         )
         ids = path_ids(node.path)
-        if ids:  # restrict to the same taxonomy root (bounds the scan too)
+        if ids:
+            # Restrict to the same taxonomy root. autoescape escapes LIKE
+            # metacharacters in the id so a root like "a_b" cannot match a
+            # sibling root ("axb") through the "_" single-char wildcard.
             query = query.filter(
-                models.SampleTaxonomy.path.like(f"/{ids[0]}/%")
+                models.SampleTaxonomy.path.startswith(
+                    f"/{ids[0]}/", autoescape=True
+                )
             )
+        else:
+            # A node with no materialized path has no resolvable root; rank
+            # only exact-node matches rather than scanning every root.
+            query = query.filter(models.SampleTaxonomy.id == node.id)
         items = [
             schemas.CohortItem(
-                acquisition_run_id=run.id,
-                experiment_id=exp.id,
-                taxon_id=tax.id,
-                taxon_name=tax.name,
-                tree_distance=tree_distance(node.path, tax.path),
+                acquisition_run_id=run_id,
+                experiment_id=exp_id,
+                taxon_id=tax_id,
+                taxon_name=tax_name,
+                tree_distance=tree_distance(node.path, tax_path),
             )
-            for run, exp, tax in query.all()
+            for run_id, exp_id, tax_id, tax_name, tax_path in query.all()
         ]
         if max_distance is not None:
             items = [it for it in items if it.tree_distance <= max_distance]
