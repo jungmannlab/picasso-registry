@@ -225,3 +225,86 @@ def test_append_only_no_mutation_routes(client, method):
     call = getattr(client, method)
     # neither the collection nor the item exposes update/delete
     assert call("/acquisition_run/run1").status_code == 405
+
+
+def test_acquisition_run_rejects_empty_id(client):
+    # "" must not slip past the required-id rule and get a server-minted ULID
+    r = client.post("/acquisition_run", json={"id": "", "status": "done"})
+    assert r.status_code == 422
+
+
+def test_duplicate_acquisition_run_conflicts(client):
+    # a retried log of an already-stored client-minted run_id is a clean 409,
+    # not a 500 with a SQL stack trace
+    assert client.post("/acquisition_run", json={"id": "dup"}).status_code == (
+        200
+    )
+    again = client.post("/acquisition_run", json={"id": "dup"})
+    assert again.status_code == 409
+
+
+def test_acquisition_run_preserves_unknown_field(client):
+    # an as-yet-untyped provenance field rides into extra, not silently lost
+    client.post(
+        "/acquisition_run", json={"id": "run-x", "stage_serial": "XZ-9"}
+    )
+    body = client.get("/acquisition_run/run-x").json()
+    assert body["extra"] == {"stage_serial": "XZ-9"}
+
+
+def test_taxonomy_ignores_caller_supplied_path(client):
+    # a caller-supplied path can't override the parent-derived materialized one
+    client.post("/sample_taxonomy", json={"id": "root"})
+    client.post(
+        "/sample_taxonomy",
+        json={"id": "kid", "parent_id": "root", "path": "/wrong/kid/"},
+    )
+    assert client.get("/sample_taxonomy/kid").json()["path"] == "/root/kid/"
+
+
+def test_cohort_like_metacharacter_isolates_roots(client):
+    # two disjoint roots differing only where "_" is a LIKE single-char
+    # wildcard; the root filter must not leak "axb" into "a_b"'s cohort
+    for tid in ("a_b", "axb"):
+        client.post("/sample_taxonomy", json={"id": tid})
+        client.post(
+            "/experiment", json={"id": f"e_{tid}", "sample_taxon_id": tid}
+        )
+        client.post(
+            "/acquisition_run",
+            json={"id": f"r_{tid}", "experiment_id": f"e_{tid}"},
+        )
+    runs = {
+        c["acquisition_run_id"]
+        for c in client.get("/cohort", params={"taxon_id": "a_b"}).json()
+    }
+    assert runs == {"r_a_b"}
+
+
+def test_cohort_excludes_unclassified_run(client):
+    # a run with no experiment (hence no taxon) has no tree distance and is
+    # not a cohort member — excluded by design, not a silent bug
+    _build_tree(client)
+    client.post(
+        "/experiment", json={"id": "e_hela", "sample_taxon_id": "hela"}
+    )
+    client.post(
+        "/acquisition_run", json={"id": "r_hela", "experiment_id": "e_hela"}
+    )
+    client.post("/acquisition_run", json={"id": "r_orphan"})
+    runs = {
+        c["acquisition_run_id"]
+        for c in client.get("/cohort", params={"taxon_id": "hela"}).json()
+    }
+    assert "r_hela" in runs
+    assert "r_orphan" not in runs
+
+
+def test_metrics_extra_explicit_wins(client):
+    # both channels carry key "foo"; the explicit extra dict is authoritative
+    client.post(
+        "/metrics",
+        json={"analysis_run_id": "a1", "foo": 1, "extra": {"foo": 2}},
+    )
+    stored = client.get("/metrics").json()[0]["extra"]
+    assert stored["foo"] == 2

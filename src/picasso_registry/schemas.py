@@ -10,12 +10,24 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class _ORM(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str | None = None
+
+
+class _ORMExtra(_ORM):
+    """Base for tables carrying a JSON ``extra`` column.
+
+    ``extra="allow"`` lets unknown, not-yet-typed top-level fields ride
+    through the request instead of being silently dropped; the persistence
+    layer folds them into the ``extra`` column so provenance is preserved in
+    this append-only store.
+    """
+
+    model_config = ConfigDict(from_attributes=True, extra="allow")
 
 
 # ── Setup ────────────────────────────────────────────────────────────────
@@ -32,7 +44,7 @@ class SampleTaxonomy(_ORM):
     version: str | None = None
 
 
-class Experiment(_ORM):
+class Experiment(_ORMExtra):
     created_at: datetime | None = None
     operator: str | None = None
     sample_taxon_id: str | None = None
@@ -63,7 +75,7 @@ class TargetChannel(_ORM):
     round_index: int | None = None
 
 
-class ReagentProvenance(_ORM):
+class ReagentProvenance(_ORMExtra):
     experiment_id: str | None = None
     prep_datetime: datetime | None = None
     hours_since_labeling: float | None = None
@@ -74,8 +86,10 @@ class ReagentProvenance(_ORM):
 # ── Acquisition ──────────────────────────────────────────────────────────
 
 
-class AcquisitionRun(_ORM):
-    id: str  # the run_id minted by PycroFlow — required, never server-minted
+class AcquisitionRun(_ORMExtra):
+    # the run_id minted by PycroFlow — required, non-empty, never
+    # server-minted (min_length rejects "" before it can mint a ULID).
+    id: str = Field(min_length=1)
     experiment_id: str | None = None
     microscope_id: str | None = None
     started_at: datetime | None = None
@@ -89,7 +103,7 @@ class AcquisitionRun(_ORM):
     extra: dict | None = None
 
 
-class Fov(_ORM):
+class Fov(_ORMExtra):
     acquisition_run_id: str | None = None
     target_channel_id: str | None = None
     pos_x: float | None = None
@@ -105,7 +119,7 @@ class Fov(_ORM):
     extra: dict | None = None
 
 
-class Illumination(_ORM):
+class Illumination(_ORMExtra):
     fov_id: str | None = None
     laser_nm: int | None = None
     target_power_mW: float | None = None
@@ -114,7 +128,7 @@ class Illumination(_ORM):
     extra: dict | None = None
 
 
-class Environment(_ORM):
+class Environment(_ORMExtra):
     fov_id: str | None = None
     recorded_at: datetime | None = None
     room_temp_c: float | None = None
@@ -126,7 +140,7 @@ class Environment(_ORM):
     extra: dict | None = None
 
 
-class FluidicsRound(_ORM):
+class FluidicsRound(_ORMExtra):
     acquisition_run_id: str | None = None
     round_index: int | None = None
     duration_s: float | None = None
@@ -138,7 +152,7 @@ class FluidicsRound(_ORM):
     extra: dict | None = None
 
 
-class SampleMorphology(_ORM):
+class SampleMorphology(_ORMExtra):
     fov_id: str | None = None
     confluence: float | None = None
     n_cells: int | None = None
@@ -152,7 +166,7 @@ class SampleMorphology(_ORM):
 # ── Analysis ─────────────────────────────────────────────────────────────
 
 
-class AnalysisRun(_ORM):
+class AnalysisRun(_ORMExtra):
     fov_id: str | None = None
     acquisition_run_id: str | None = None
     kind: str | None = None
@@ -169,8 +183,7 @@ class AnalysisRun(_ORM):
     extra: dict | None = None
 
 
-class Metrics(_ORM):
-    model_config = ConfigDict(from_attributes=True, extra="allow")
+class Metrics(_ORMExtra):
     # Required: every metrics row joins to an analysis_run (run_id invariant).
     analysis_run_id: str
     scope: str | None = None
@@ -220,7 +233,7 @@ class Metrics(_ORM):
     extra: dict | None = None
 
 
-class ResourceUsage(_ORM):
+class ResourceUsage(_ORMExtra):
     analysis_run_id: str | None = None
     module: str | None = None
     compute_seconds: float | None = None

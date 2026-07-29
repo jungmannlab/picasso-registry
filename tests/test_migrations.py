@@ -23,3 +23,15 @@ def test_migration_matches_models(tmp_path, monkeypatch):
     inspector = inspect(create_engine(url))
     tables = set(inspector.get_table_names()) - {"alembic_version"}
     assert tables == set(Base.metadata.tables.keys())
+
+    # Guard column-level drift too, not just the table set: a column added to
+    # a model but forgotten in the migration (or vice versa) must fail CI
+    # rather than blow up at insert time in production Postgres.
+    for name, table in Base.metadata.tables.items():
+        migrated = {c["name"]: c for c in inspector.get_columns(name)}
+        model_cols = {c.name: c for c in table.columns}
+        assert set(migrated) == set(model_cols), f"{name}: column set drift"
+        for col_name, col in model_cols.items():
+            assert (
+                migrated[col_name]["nullable"] == col.nullable
+            ), f"{name}.{col_name}: nullability drift"
