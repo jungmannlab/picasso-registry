@@ -129,16 +129,22 @@ that updates the client and all dependents together.
   Regenerate the spec after any schema/route change with
   `python -m picasso_registry.export_openapi` (a test enforces sync). Alembic
   migrations live in `alembic/`.
-- **Shared data contracts** (after S0B-2): the metric-vector schema, the
-  workflow-YAML schema, the `localize_frames(frames, info, params) -> locs`
-  signature, and picasso-workflow's `ModuleSpec`
-  (`../picasso-workflow/picasso_workflow/modulespec.py`, already implemented).
+- **Shared data contracts** (published S0B-2): the freeze doc is
+  `CONTRACTS.md` (repo root) with the importable half in
+  `src/picasso_registry/contracts.py`. Four contracts: the **metric-vector**
+  model (`MetricVector`, a reuse of `schemas.Metrics`), the **workflow-YAML**
+  shape (`Workflow`/`WorkflowStep` — ordered `[{module, parameters}]`; semantic
+  validation stays owned by picasso-workflow's `validate_workflow` +
+  `MODULE_REGISTRY`), the **`localize_frames(frames, info, params) -> locs`**
+  signature (`LocalizeFrames` Protocol — GUI-free; the picasso function is
+  *planned*, built in WP-2), and picasso-workflow's **`ModuleSpec`**
+  (`../picasso-workflow/picasso_workflow/modulespec.py`, already implemented —
+  linked, not rebuilt).
 
-_(The picasso-registry artifacts above are **in-tree as of S0B-1**. The
-**shared data contracts** (metric-vector schema, workflow-YAML schema,
-`localize_frames` signature) are still **planned** — specified in design-doc
-Part VI and brief S0B-2 — except picasso-workflow's `ModuleSpec`, already
-implemented.)_
+_(The picasso-registry OpenAPI/schema artifacts are **in-tree as of S0B-1**;
+the **shared data contracts** are **published as of S0B-2** in `CONTRACTS.md` +
+`contracts.py`. The `localize_frames` function itself is still to be built in
+picasso (WP-2) — S0B-2 freezes its signature, not its implementation.)_
 
 ## Notes for editing
 
