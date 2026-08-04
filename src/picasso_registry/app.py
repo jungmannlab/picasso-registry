@@ -19,11 +19,13 @@ FastAPI must see the real class objects (not stringized annotations) to build
 the request models and the OpenAPI spec.
 """
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
 from . import __version__, crud, models, schemas
+from .cohort import resolve_match_depth
 from .db import get_session
 from .taxonomy import deep_merge, path_ids, tree_distance
 
@@ -161,19 +163,59 @@ def create_app() -> FastAPI:
         taxon_id: str,
         limit: int = 50,
         max_distance: int | None = None,
+        modality: schemas.Modality | None = None,
+        dimensionality: schemas.DimensionalityValue | None = None,
+        buffer: str | None = None,
+        target: str | None = None,
+        target_set: list[str] | None = Query(default=None),
+        metric: str | None = None,
+        match_depth: schemas.MatchDepth | None = None,
         session: Session = Depends(get_session),
     ):
-        """Acquisition runs ranked by sample-taxon tree distance.
+        """Acquisition runs ranked by sample-taxon tree distance, constrained
+        to the metric-appropriate cohort (A2 three-axis descriptor, C12).
 
-        Exact-node matches rank first; when history is sparse the ranking
-        falls back *up* the tree (closer ancestors/siblings first). Only runs
-        under the same taxonomy root are considered — a different top-level
-        sample class is not a fallback — and ``max_distance`` optionally caps
-        how far up the tree to generalize.
+        Ranking (axis 1) is unchanged: exact-node matches first, then falling
+        back *up* the tree; only runs under the same taxonomy **root** are
+        considered and ``max_distance`` caps how far to generalize.
+
+        On top of that, axis 2 (target) and axis 3 (modality / dimensionality
+        / buffer) act as filters. A ``metric`` (or explicit ``match_depth``)
+        selects which axes are **required** to match, per A2: localization
+        metrics need modality + broad class (``broad``); structure/biology and
+        kinetics additionally need target (``fine``). Any axis value supplied
+        is always applied as a filter; the depth only decides which are
+        *required* (a required-but-missing value is a 400). With no metric and
+        no axis args this is exactly the S0B-1 taxon-only cohort.
         """
         node = session.get(models.SampleTaxonomy, taxon_id)
         if node is None:
             raise HTTPException(status_code=404, detail="unknown taxon")
+
+        depth = resolve_match_depth(metric, match_depth)
+        targets = set(target_set or [])
+        if target:
+            targets.add(target)
+        # Enforce the axes A2 marks REQUIRED for the chosen metric depth. We
+        # can only filter on a value the caller supplied, so a required axis
+        # with no value is a 400 rather than a silently looser cohort.
+        if depth is not None and not modality:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "modality is required for a metric-scoped cohort "
+                    "(A2 axis 3); pass ?modality="
+                ),
+            )
+        if depth == "fine" and not targets:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "target/target_set is required for a target-level "
+                    "metric cohort (A2 axis 2)"
+                ),
+            )
+
         # Select only the columns the cohort needs (not whole ORM rows) so a
         # busy taxonomy root doesn't materialize entire entities just to rank
         # them. The joins are intentionally INNER: a run with no experiment,
@@ -196,6 +238,30 @@ def create_app() -> FastAPI:
                 models.Experiment.sample_taxon_id == models.SampleTaxonomy.id,
             )
         )
+        # Axis 3 filters (applied when supplied). modality is on the run;
+        # dimensionality + buffer are on the experiment.
+        if modality:
+            query = query.filter(
+                models.AcquisitionRun.acquisition_modality == modality
+            )
+        if dimensionality:
+            query = query.filter(
+                models.Experiment.dimensionality == dimensionality
+            )
+        if buffer:
+            query = query.filter(models.Experiment.buffer == buffer)
+        # Axis 2 filter: the run's experiment must have a target_channel whose
+        # target is in the requested set (overlap). EXISTS keeps it one row
+        # per run rather than fanning out across channels.
+        if targets:
+            tc = models.TargetChannel
+            query = query.filter(
+                exists().where(
+                    (tc.experiment_id == models.Experiment.id)
+                    & (tc.target.in_(targets))
+                )
+            )
+
         ids = path_ids(node.path)
         if ids:
             # Restrict to the same taxonomy root. autoescape escapes LIKE

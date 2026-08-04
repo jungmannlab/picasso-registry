@@ -10,6 +10,26 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 ## [Unreleased]
 
 ### Added
+- **S0B-1b — A2 three-axis cohort matching (register C12).** Extends the
+  sample-taxon-only `/cohort` to the ratified three-axis descriptor
+  (append-only, backward compatible — add, don't repurpose):
+  - `models.py`/`schemas.py`: new nullable columns — `acquisition_run.
+    acquisition_modality` (axis 3, closed enum TIRF/HILO/spinning_disk/
+    light_sheet), and on `target_channel` (axis 2) `target_class`
+    (intracellular_protein/membrane_protein/glycan) plus the per-target
+    illumination bundle `exposure_ms` / `laser_power_mW`. dimensionality +
+    buffer already lived on `experiment`. Leaf vocabularies (cell lines,
+    target *names*) stay open strings. Alembic migration `0002`.
+  - `GET /cohort`: optional axis-2 (`target`/`target_set` overlap) and axis-3
+    (`modality`/`dimensionality`/`buffer`) filters, plus a `metric` /
+    `match_depth` selector that picks the **required** axes per A2 —
+    localization metrics require modality + broad class (`broad`); structure/
+    biology + kinetics additionally require target (`fine`). Tree-distance
+    ranking and root restriction preserved within the constrained set; a bare
+    `taxon_id` call is byte-for-byte the S0B-1 behaviour. Depth policy lives in
+    the unit-tested `cohort.py`.
+  - `client.cohort(...)` gains keyword-only params for the new axes (no
+    breaking change; `None` args dropped). `openapi.json` regenerated.
 - **S0B-1 — completed the registry contract.** Full append-only schema
   (`models.py`): the design-doc Part VI table set (experiment, sample_taxonomy,
   sample_tag, target_channel, reagent_provenance, acquisition_run, fov,

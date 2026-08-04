@@ -35,3 +35,29 @@ def test_migration_matches_models(tmp_path, monkeypatch):
             assert (
                 migrated[col_name]["nullable"] == col.nullable
             ), f"{name}.{col_name}: nullability drift"
+
+
+def test_a2_axes_migration_up_down(tmp_path, monkeypatch):
+    # 0002 adds the A2 axis-2/3 columns and cleanly removes them on downgrade.
+    url = f"sqlite:///{tmp_path / 'ad.db'}"
+    monkeypatch.setenv("PAINT_REGISTRY_URL", url)
+    cfg = Config(str(REPO_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
+
+    added = {
+        "acquisition_run": {"acquisition_modality"},
+        "target_channel": {"target_class", "exposure_ms", "laser_power_mW"},
+    }
+    engine = create_engine(url)
+
+    command.upgrade(cfg, "head")
+    for table, cols in added.items():
+        present = {c["name"] for c in inspect(engine).get_columns(table)}
+        assert cols <= present, f"{table}: missing {cols - present}"
+
+    command.downgrade(cfg, "0001_initial")
+    for table, cols in added.items():
+        present = {c["name"] for c in inspect(engine).get_columns(table)}
+        assert not (cols & present), f"{table}: {cols & present} not dropped"
+
+    command.upgrade(cfg, "head")  # re-upgrades cleanly

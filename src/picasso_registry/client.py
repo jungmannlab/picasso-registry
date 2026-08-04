@@ -61,8 +61,46 @@ class _BaseRegistry:
     def log_metrics(self, **fields: Any) -> dict[str, Any]:
         return self._post("/metrics", fields)
 
-    def cohort(self, taxon_id: str, **params: Any) -> list[dict[str, Any]]:
-        return self._get("/cohort", {"taxon_id": taxon_id, **params})
+    def cohort(
+        self,
+        taxon_id: str,
+        *,
+        limit: int | None = None,
+        max_distance: int | None = None,
+        modality: str | None = None,
+        dimensionality: str | None = None,
+        buffer: str | None = None,
+        target: str | None = None,
+        target_set: list[str] | None = None,
+        metric: str | None = None,
+        match_depth: str | None = None,
+        **params: Any,
+    ) -> list[dict[str, Any]]:
+        """Ranked cohort for ``taxon_id`` (A2 three-axis descriptor).
+
+        All args past ``taxon_id`` are optional and keyword-only, so the
+        S0B-1 ``cohort(taxon_id)`` / ``cohort(taxon_id, max_distance=...)``
+        calls keep working unchanged. ``metric`` (or ``match_depth``) selects
+        which axes must match; ``modality`` is required once a metric depth is
+        in play, and ``target``/``target_set`` additionally for structure/
+        biology/kinetics metrics. ``None`` args are dropped so the server sees
+        only what was supplied.
+        """
+        query: dict[str, Any] = {"taxon_id": taxon_id}
+        optional = {
+            "limit": limit,
+            "max_distance": max_distance,
+            "modality": modality,
+            "dimensionality": dimensionality,
+            "buffer": buffer,
+            "target": target,
+            "target_set": target_set,
+            "metric": metric,
+            "match_depth": match_depth,
+        }
+        query.update({k: v for k, v in optional.items() if v is not None})
+        query.update(params)
+        return self._get("/cohort", query)
 
     def node_defaults(self, taxon_id: str) -> dict[str, Any]:
         return self._get("/node_defaults", {"taxon_id": taxon_id})

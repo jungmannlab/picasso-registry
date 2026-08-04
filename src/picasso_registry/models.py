@@ -88,6 +88,8 @@ class TargetChannel(Base):
         ForeignKey("experiment.id")
     )
     target: Mapped[str | None] = mapped_column(String)
+    # A2 axis 2: target class (closed enum, validated at the schema layer).
+    target_class: Mapped[str | None] = mapped_column(String)
     binder: Mapped[str | None] = mapped_column(String)
     binder_lot: Mapped[str | None] = mapped_column(String)
     dye: Mapped[str | None] = mapped_column(String)
@@ -95,6 +97,9 @@ class TargetChannel(Base):
     imager_seq: Mapped[str | None] = mapped_column(String)
     imager_batch: Mapped[str | None] = mapped_column(String)
     imager_conc_nM: Mapped[float | None] = mapped_column(Float)
+    # A2: per-target (per-channel) illumination bundle.
+    exposure_ms: Mapped[float | None] = mapped_column(Float)
+    laser_power_mW: Mapped[float | None] = mapped_column(Float)
     round_index: Mapped[int | None] = mapped_column(Integer)
 
 
@@ -124,6 +129,8 @@ class AcquisitionRun(Base):
         ForeignKey("experiment.id")
     )
     microscope_id: Mapped[str | None] = mapped_column(String)
+    # A2 axis 3 modality (single-valued per run; closed enum at schema layer).
+    acquisition_modality: Mapped[str | None] = mapped_column(String)
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
