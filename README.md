@@ -36,6 +36,25 @@ picasso-registry                       # uvicorn on 127.0.0.1:8000
 - **Client** — `picasso_registry.client.RegistryClient` is a thin `requests`
   wrapper mirroring the endpoints (`[client]` extra).
 
+## Shared data contracts (S0B-2)
+
+Beyond the registry's own API, this repo hosts the **frozen cross-repo data
+shapes** the automation stack agrees on — see [`CONTRACTS.md`](CONTRACTS.md)
+for the full freeze doc. The importable half is `picasso_registry.contracts`:
+
+```python
+from picasso_registry.contracts import (
+    MetricVector,   # = schemas.Metrics — the metric vector (groups A–D + extra)
+    Workflow,       # ordered [{module, parameters}] workflow-YAML shape
+    LocalizeFrames, # picasso.localize.localize_frames(frames, info, params)->locs
+)
+```
+
+Semantic validation of workflows stays owned by picasso-workflow
+(`validate_workflow` + `MODULE_REGISTRY`); `localize_frames` is a *planned*
+picasso function (WP-2) whose signature S0B-2 freezes; `ModuleSpec` is linked,
+not rebuilt.
+
 ## REST surface (append-only: POST create, GET read; no update/delete)
 
 - `POST/GET /<table>` and `GET /<table>/{id}` for every table.
