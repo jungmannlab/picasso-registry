@@ -10,7 +10,7 @@ in [`picasso_registry.contracts`](src/picasso_registry/contracts.py).
 shape below is a cross-repo contract change — its own work order that updates
 the owning repo, the registry client, and every dependent together, never a
 silent edit. Each contract names the **single repo that owns it**; this repo
-(picasso-registry) hosts the freeze doc and owns contracts 1.
+(picasso-registry) hosts the freeze doc and owns contract 1.
 
 | # | Contract | Owner | Importable as |
 |---|----------|-------|---------------|
@@ -39,7 +39,10 @@ to drift from what `POST /metrics` actually accepts.
 
 - **Required:** `analysis_run_id` — every metric vector joins to an
   `analysis_run` (the `run_id` join invariant).
-- **Typed columns** (`TYPED_METRIC_FIELDS`), by group:
+- **Typed columns** — the authoritative list is the model itself
+  (`schemas.Metrics` / `contracts.TYPED_METRIC_FIELDS`, which is derived from
+  it); the grouping below is a readable snapshot, not a second source of
+  truth. By group:
   - **A — localization quality:** `n_locs`, `nena_nm`, `frc_nm`, `decorr_nm`,
     `photons_median`, `lp_x_nm`/`lp_y_nm`/`lp_z_nm`, `psf_sigma_x`/`psf_sigma_y`,
     `psf_ellipticity`, `net_gradient_median`, `spots_per_frame`,

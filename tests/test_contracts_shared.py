@@ -87,6 +87,34 @@ def test_workflow_from_steps_normalizes_accepted_forms():
     assert wf.root[3].parameters == {}
 
 
+def test_workflow_from_steps_falsy_module_falls_back_to_name():
+    # Matches picasso-workflow's `module or name` resolution.
+    wf = Workflow.from_steps([{"module": "", "name": "identify"}])
+    assert wf.root[0].module == "identify"
+
+
+def test_workflow_from_steps_none_parameters_default_empty():
+    # A YAML `parameters:` parses to None → treated as "no parameters".
+    wf = Workflow.from_steps([{"module": "identify", "parameters": None}])
+    assert wf.root[0].parameters == {}
+    wf2 = Workflow.from_steps([("identify", None)])
+    assert wf2.root[0].parameters == {}
+
+
+@pytest.mark.parametrize(
+    "bad, exc",
+    [
+        ([[]], ValueError),  # empty sequence step
+        ([{"mdoule": "identify"}], ValueError),  # typo'd/missing module key
+        ([("identify", ["box", 7])], TypeError),  # non-mapping params
+        ([42], TypeError),  # unsupported step type
+    ],
+)
+def test_workflow_from_steps_rejects_malformed_with_clear_error(bad, exc):
+    with pytest.raises(exc):
+        Workflow.from_steps(bad)
+
+
 # ── 3. localize_frames signature ─────────────────────────────────────────
 
 

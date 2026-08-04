@@ -100,21 +100,45 @@ class Workflow(RootModel[list[WorkflowStep]]):
         * ``"module_name"`` — a bare string (no parameters)
         * ``{"module": name, "parameters": {...}}`` — the YAML mapping
         * ``{"name": name, ...}`` — ``name`` accepted as a ``module`` alias
+
+        Malformed steps raise a clear ``ValueError``/``TypeError`` naming
+        the offending index rather than leaking a low-level crash. An
+        absent or empty ``parameters`` (including a YAML ``parameters:``
+        that parses to ``None``) means "no parameters". Module resolution
+        uses the same falsy fallback as picasso-workflow's ``_step_name``
+        (``module or name``), so the two agree on the same input.
         """
         norm: list[dict] = []
-        for step in steps:
+        for i, step in enumerate(steps):
             if isinstance(step, str):
-                norm.append({"module": step, "parameters": {}})
+                module, params = step, {}
             elif isinstance(step, (tuple, list)):
+                if not step:
+                    raise ValueError(f"workflow step {i} is empty")
                 module = step[0]
                 params = step[1] if len(step) > 1 else {}
-                norm.append({"module": module, "parameters": params})
             elif isinstance(step, dict):
-                module = step.get("module", step.get("name"))
-                params = step.get("parameters", {})
-                norm.append({"module": module, "parameters": params})
-            else:  # pragma: no cover - guard for bad input
-                raise TypeError(f"unsupported workflow step: {step!r}")
+                # Falsy fallback (module or name), matching picasso-
+                # workflow's canonical _step_name resolution.
+                module = step.get("module") or step.get("name")
+                params = step.get("parameters")
+            else:
+                raise TypeError(
+                    f"workflow step {i} is not a str/tuple/mapping: "
+                    f"{step!r}"
+                )
+            if not module:
+                raise ValueError(
+                    f"workflow step {i} is missing a 'module'/'name': "
+                    f"{step!r}"
+                )
+            params = {} if params is None else params
+            if not isinstance(params, dict):
+                raise TypeError(
+                    f"workflow step {i} parameters must be a mapping, "
+                    f"got {type(params).__name__}"
+                )
+            norm.append({"module": module, "parameters": params})
         return cls.model_validate(norm)
 
 
@@ -165,8 +189,7 @@ class LocalizeFrames(Protocol):
     ``fn`` is callable; the argument shape is documented, not enforced.
     """
 
-    def __call__(self, frames, info, params):  # noqa: D401,E704
-        ...
+    def __call__(self, frames, info, params): ...
 
 
 # ── 4. ModuleSpec (link only) ────────────────────────────────────────────
