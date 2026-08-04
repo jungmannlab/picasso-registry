@@ -1,0 +1,46 @@
+name: Unit Tests (hosted)
+
+# Fast, hermetic unit tier on a cheap GitHub-hosted runner — the REQUIRED status
+# check that gates merges into main. This repo is a pure FastAPI + SQLAlchemy
+# service (no GUI/Qt, no lab hardware), and the suite runs against an in-memory
+# SQLite DB via FastAPI's TestClient, so no display, network, or machine-specific
+# config is needed. The base `pip install -e .` is wheel-only; heavier tooling
+# lives in the [dev] extra. There is no self-hosted tier in this repo.
+
+# `pull_request:` is intentionally unfiltered (fires for PRs into ANY base
+# branch) so stacked / intermediate-branch PRs still get tested; only the push
+# trigger is scoped to the long-lived branches.
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # setuptools-scm needs tags/history for the version
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "${{ matrix.python-version }}"
+          cache: pip
+
+      - name: Install package + test tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run unit tests
+        run: pytest -q

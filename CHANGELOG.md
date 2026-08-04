@@ -45,6 +45,13 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
   (db, models, schemas, app, client) with a passing smoke test.
 
 ### Changed
+- Aligned CI with the hosted-runner merge-gate strategy (S0A-3): split the
+  single `ci.yml` into two GitHub-hosted (`ubuntu-latest`) workflows — `Lint`
+  (`black --check` + `flake8`) and `Unit Tests (hosted)` (`pytest`, Python
+  3.10 + 3.12) — matching picasso-workflow's names so branch-protection required
+  checks are consistent across the stack. This repo has no GUI/lab-hardware
+  dependency, so there is no self-hosted tier to demote; the unit tier is already
+  hermetic (in-memory SQLite via FastAPI `TestClient`, no display/network/config).
 - Aligned style & repo management with the DNA-PAINT stack conventions (S0A-2):
   flake8 now ignores `E501` (Black owns line wrapping @79), matching
   picasso-workflow's rule; tagged an initial `v0.0.1` so setuptools-scm resolves
