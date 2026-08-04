@@ -25,7 +25,6 @@ from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
 from . import __version__, crud, models, schemas
-from .cohort import resolve_match_depth
 from .db import get_session
 from .taxonomy import deep_merge, path_ids, tree_distance
 
@@ -168,53 +167,30 @@ def create_app() -> FastAPI:
         buffer: str | None = None,
         target: str | None = None,
         target_set: list[str] | None = Query(default=None),
-        metric: str | None = None,
-        match_depth: schemas.MatchDepth | None = None,
         session: Session = Depends(get_session),
     ):
-        """Acquisition runs ranked by sample-taxon tree distance, constrained
-        to the metric-appropriate cohort (A2 three-axis descriptor, C12).
+        """Acquisition runs ranked by sample-taxon tree distance, optionally
+        constrained on the other A2 descriptor axes (register C12).
 
         Ranking (axis 1) is unchanged: exact-node matches first, then falling
         back *up* the tree; only runs under the same taxonomy **root** are
         considered and ``max_distance`` caps how far to generalize.
 
-        On top of that, axis 2 (target) and axis 3 (modality / dimensionality
-        / buffer) act as filters. A ``metric`` (or explicit ``match_depth``)
-        selects which axes are **required** to match, per A2: localization
-        metrics need modality + broad class (``broad``); structure/biology and
-        kinetics additionally need target (``fine``). Any axis value supplied
-        is always applied as a filter; the depth only decides which are
-        *required* (a required-but-missing value is a 400). With no metric and
-        no axis args this is exactly the S0B-1 taxon-only cohort.
+        On top of that, axis 2 (``target`` / ``target_set``) and axis 3
+        (``modality`` / ``dimensionality`` / ``buffer``) are **independent
+        optional filters** — each narrows the cohort when supplied. *How much*
+        must match is comparison-dependent and left to the caller (the
+        recommender/agent decides which axes to constrain for a given metric);
+        the registry does not hard-code that policy. With no axis args this is
+        exactly the S0B-1 taxon-only cohort.
         """
         node = session.get(models.SampleTaxonomy, taxon_id)
         if node is None:
             raise HTTPException(status_code=404, detail="unknown taxon")
 
-        depth = resolve_match_depth(metric, match_depth)
         targets = set(target_set or [])
         if target:
             targets.add(target)
-        # Enforce the axes A2 marks REQUIRED for the chosen metric depth. We
-        # can only filter on a value the caller supplied, so a required axis
-        # with no value is a 400 rather than a silently looser cohort.
-        if depth is not None and not modality:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "modality is required for a metric-scoped cohort "
-                    "(A2 axis 3); pass ?modality="
-                ),
-            )
-        if depth == "fine" and not targets:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "target/target_set is required for a target-level "
-                    "metric cohort (A2 axis 2)"
-                ),
-            )
 
         # Select only the columns the cohort needs (not whole ORM rows) so a
         # busy taxonomy root doesn't materialize entire entities just to rank
@@ -238,11 +214,11 @@ def create_app() -> FastAPI:
                 models.Experiment.sample_taxon_id == models.SampleTaxonomy.id,
             )
         )
-        # Axis 3 filters (applied when supplied). modality is on the run;
-        # dimensionality + buffer are on the experiment.
+        # Axis 3 filters (applied when supplied) — all single-valued on the
+        # experiment.
         if modality:
             query = query.filter(
-                models.AcquisitionRun.acquisition_modality == modality
+                models.Experiment.acquisition_modality == modality
             )
         if dimensionality:
             query = query.filter(

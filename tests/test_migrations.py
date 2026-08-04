@@ -45,7 +45,7 @@ def test_a2_axes_migration_up_down(tmp_path, monkeypatch):
     cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
 
     added = {
-        "acquisition_run": {"acquisition_modality"},
+        "experiment": {"acquisition_modality"},
         "target_channel": {"target_class", "exposure_ms", "laser_power_mW"},
     }
     engine = create_engine(url)

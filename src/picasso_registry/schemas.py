@@ -22,8 +22,6 @@ DimensionalityValue = Literal["2D", "3D"]  # axis 3
 TargetClass = Literal[  # axis 2 target class (names stay open)
     "intracellular_protein", "membrane_protein", "glycan"
 ]
-# /cohort depth selector: which axes are REQUIRED to match (vs ranking-only).
-MatchDepth = Literal["broad", "fine"]
 
 
 class _ORM(BaseModel):
@@ -64,6 +62,8 @@ class Experiment(_ORMExtra):
     organism: str | None = None
     fixation: str | None = None
     mounting: str | None = None
+    # A2 axis 3 (single-valued per experiment — a run doesn't mix modalities).
+    acquisition_modality: Modality | None = None
     dimensionality: str | None = None
     buffer: str | None = None
     notes: str | None = None
@@ -109,9 +109,6 @@ class AcquisitionRun(_ORMExtra):
     id: str = Field(min_length=1)
     experiment_id: str | None = None
     microscope_id: str | None = None
-    # A2 axis 3 (single-valued per run). dimensionality + buffer live on
-    # experiment; modality is per-run (a run picks one modality).
-    acquisition_modality: Modality | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
     status: str | None = None

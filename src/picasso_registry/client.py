@@ -72,19 +72,16 @@ class _BaseRegistry:
         buffer: str | None = None,
         target: str | None = None,
         target_set: list[str] | None = None,
-        metric: str | None = None,
-        match_depth: str | None = None,
         **params: Any,
     ) -> list[dict[str, Any]]:
-        """Ranked cohort for ``taxon_id`` (A2 three-axis descriptor).
+        """Ranked cohort for ``taxon_id`` (A2 descriptor axes, register C12).
 
         All args past ``taxon_id`` are optional and keyword-only, so the
         S0B-1 ``cohort(taxon_id)`` / ``cohort(taxon_id, max_distance=...)``
-        calls keep working unchanged. ``metric`` (or ``match_depth``) selects
-        which axes must match; ``modality`` is required once a metric depth is
-        in play, and ``target``/``target_set`` additionally for structure/
-        biology/kinetics metrics. ``None`` args are dropped so the server sees
-        only what was supplied.
+        calls keep working unchanged. ``modality`` / ``dimensionality`` /
+        ``buffer`` (axis 3) and ``target`` / ``target_set`` (axis 2) are
+        independent filters — pass whichever axes the comparison requires.
+        ``None`` args are dropped so the server sees only what was supplied.
         """
         query: dict[str, Any] = {"taxon_id": taxon_id}
         optional = {
@@ -95,8 +92,6 @@ class _BaseRegistry:
             "buffer": buffer,
             "target": target,
             "target_set": target_set,
-            "metric": metric,
-            "match_depth": match_depth,
         }
         query.update({k: v for k, v in optional.items() if v is not None})
         query.update(params)

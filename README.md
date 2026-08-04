@@ -42,13 +42,12 @@ picasso-registry                       # uvicorn on 127.0.0.1:8000
 - `GET /cohort?taxon_id=…` — acquisition runs ranked by sample-taxon **tree
   distance** (exact node first, then falling back *up* the tree; restricted to
   the same taxonomy root). Optional `max_distance=N` caps how far to generalize.
-  The **A2 three-axis descriptor** (C12) adds optional filters: axis-2
+  The **A2 descriptor** (C12) adds independent optional filters: axis-2
   `target`/`target_set` (target-set overlap) and axis-3 `modality`,
-  `dimensionality`, `buffer`. A `metric` (or explicit `match_depth`) selects
-  which axes are **required**: localization metrics (NeNA/precision/drift) need
-  `modality` (`broad`); structure/biology + kinetics also need `target`
-  (`fine`). Ranking stays tree-distance within the constrained set; a bare
-  `taxon_id` call is unchanged.
+  `dimensionality`, `buffer`. Pass whichever axes a given comparison needs —
+  *how much* must match is the caller's choice (the registry doesn't hard-code
+  a per-metric policy). Ranking stays tree-distance within the constrained set;
+  a bare `taxon_id` call is unchanged.
 - `GET /node_defaults?taxon_id=…` — the inherited default **cascade**
   (`defaults` / `expected_metrics` / `qc_rules`), descendant overrides ancestor.
 - `POST /bulk` — batch ingest across tables in one transaction (backfill).

@@ -4,23 +4,6 @@
       "AcquisitionRun": {
         "additionalProperties": true,
         "properties": {
-          "acquisition_modality": {
-            "anyOf": [
-              {
-                "enum": [
-                  "TIRF",
-                  "HILO",
-                  "spinning_disk",
-                  "light_sheet"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Acquisition Modality"
-          },
           "config_yaml": {
             "anyOf": [
               {
@@ -740,6 +723,23 @@
       "Experiment": {
         "additionalProperties": true,
         "properties": {
+          "acquisition_modality": {
+            "anyOf": [
+              {
+                "enum": [
+                  "TIRF",
+                  "HILO",
+                  "spinning_disk",
+                  "light_sheet"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acquisition Modality"
+          },
           "buffer": {
             "anyOf": [
               {
@@ -3287,7 +3287,7 @@
     },
     "/cohort": {
       "get": {
-        "description": "Acquisition runs ranked by sample-taxon tree distance, constrained\nto the metric-appropriate cohort (A2 three-axis descriptor, C12).\n\nRanking (axis 1) is unchanged: exact-node matches first, then falling\nback *up* the tree; only runs under the same taxonomy **root** are\nconsidered and ``max_distance`` caps how far to generalize.\n\nOn top of that, axis 2 (target) and axis 3 (modality / dimensionality\n/ buffer) act as filters. A ``metric`` (or explicit ``match_depth``)\nselects which axes are **required** to match, per A2: localization\nmetrics need modality + broad class (``broad``); structure/biology and\nkinetics additionally need target (``fine``). Any axis value supplied\nis always applied as a filter; the depth only decides which are\n*required* (a required-but-missing value is a 400). With no metric and\nno axis args this is exactly the S0B-1 taxon-only cohort.",
+        "description": "Acquisition runs ranked by sample-taxon tree distance, optionally\nconstrained on the other A2 descriptor axes (register C12).\n\nRanking (axis 1) is unchanged: exact-node matches first, then falling\nback *up* the tree; only runs under the same taxonomy **root** are\nconsidered and ``max_distance`` caps how far to generalize.\n\nOn top of that, axis 2 (``target`` / ``target_set``) and axis 3\n(``modality`` / ``dimensionality`` / ``buffer``) are **independent\noptional filters** \u2014 each narrows the cohort when supplied. *How much*\nmust match is comparison-dependent and left to the caller (the\nrecommender/agent decides which axes to constrain for a given metric);\nthe registry does not hard-code that policy. With no axis args this is\nexactly the S0B-1 taxon-only cohort.",
         "operationId": "query_cohort_cohort_get",
         "parameters": [
           {
@@ -3416,42 +3416,6 @@
                 }
               ],
               "title": "Target Set"
-            }
-          },
-          {
-            "in": "query",
-            "name": "metric",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Metric"
-            }
-          },
-          {
-            "in": "query",
-            "name": "match_depth",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "enum": [
-                    "broad",
-                    "fine"
-                  ],
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Match Depth"
             }
           }
         ],

@@ -64,6 +64,9 @@ class Experiment(Base):
     organism: Mapped[str | None] = mapped_column(String)
     fixation: Mapped[str | None] = mapped_column(String)
     mounting: Mapped[str | None] = mapped_column(String)
+    # A2 axis 3 modality (single-valued per experiment; closed enum at the
+    # schema layer). dimensionality + buffer are the other two axis-3 facets.
+    acquisition_modality: Mapped[str | None] = mapped_column(String)
     dimensionality: Mapped[str | None] = mapped_column(String)
     buffer: Mapped[str | None] = mapped_column(String)
     notes: Mapped[str | None] = mapped_column(String)
@@ -129,8 +132,6 @@ class AcquisitionRun(Base):
         ForeignKey("experiment.id")
     )
     microscope_id: Mapped[str | None] = mapped_column(String)
-    # A2 axis 3 modality (single-valued per run; closed enum at schema layer).
-    acquisition_modality: Mapped[str | None] = mapped_column(String)
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )

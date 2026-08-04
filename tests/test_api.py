@@ -5,7 +5,12 @@ import pytest
 # One representative payload per table (id omitted -> server mints a ULID,
 # except acquisition_run whose id is the externally-minted run_id).
 ROUND_TRIP = {
-    "experiment": {"operator": "alice", "organism": "human"},
+    "experiment": {
+        "operator": "alice",
+        "organism": "human",
+        "acquisition_modality": "TIRF",
+        "dimensionality": "2D",
+    },
     "sample_tag": {"experiment_id": "e1", "tag": "membrane"},
     "target_channel": {
         "target": "CD20",
@@ -15,11 +20,7 @@ ROUND_TRIP = {
         "laser_power_mW": 42.0,
     },
     "reagent_provenance": {"docking_design_id": "R1"},
-    "acquisition_run": {
-        "id": "run-xyz",
-        "status": "done",
-        "acquisition_modality": "TIRF",
-    },
+    "acquisition_run": {"id": "run-xyz", "status": "done"},
     "fov": {"pos_x": 1.5, "frame_count": 30000},
     "illumination": {"laser_nm": 560, "measured_power_mW": 42.0},
     "environment": {"room_temp_c": 21.5, "humidity_pct": 40.0},

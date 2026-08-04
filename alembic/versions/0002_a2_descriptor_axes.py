@@ -1,10 +1,10 @@
 """A2 three-axis descriptor: acquisition modality + per-target bundle
 
 Register C12 (ratified 2026-08-04). Adds the axis-2/axis-3 columns needed for
-metric-dependent cohort matching. All new columns are nullable (append-only:
-existing rows stay NULL). dimensionality + buffer already exist on experiment
-from the initial schema, so only modality (on acquisition_run) and the
-per-target bundle + target_class (on target_channel) are added here.
+multi-axis cohort matching. All new columns are nullable (append-only: existing
+rows stay NULL). dimensionality + buffer already exist on experiment from the
+initial schema, so this adds modality on experiment (axis 3 is single-valued
+per experiment) and the per-target bundle + target_class on target_channel.
 
 Revision ID: 0002_a2_axes
 Revises: 0001_initial
@@ -25,7 +25,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.add_column(
-        "acquisition_run",
+        "experiment",
         sa.Column("acquisition_modality", sa.String(), nullable=True),
     )
     op.add_column(
@@ -49,5 +49,5 @@ def downgrade() -> None:
         batch.drop_column("laser_power_mW")
         batch.drop_column("exposure_ms")
         batch.drop_column("target_class")
-    with op.batch_alter_table("acquisition_run") as batch:
+    with op.batch_alter_table("experiment") as batch:
         batch.drop_column("acquisition_modality")
