@@ -10,6 +10,17 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 ## [Unreleased]
 
 ### Added
+- **S0B-2 — published the shared data contracts.** New `CONTRACTS.md` freeze
+  doc (repo root) + importable `picasso_registry.contracts` module freezing the
+  four cross-repo shapes: `MetricVector` (a verbatim reuse of `schemas.Metrics`
+  — typed groups A–D + `extra` passthrough), `Workflow`/`WorkflowStep` (the
+  ordered `[{module, parameters}]` workflow-YAML shape; semantic validation
+  stays owned by picasso-workflow's `validate_workflow` + `MODULE_REGISTRY`),
+  the `LocalizeFrames` Protocol (freezes the GUI-free
+  `picasso.localize.localize_frames(frames, info, params) -> locs` signature —
+  the picasso function itself is built later in WP-2), and a pointer to
+  picasso-workflow's already-implemented `ModuleSpec` (linked, not rebuilt).
+  Not wired into the FastAPI app, so `openapi.json` is unchanged.
 - **S0B-1 — completed the registry contract.** Full append-only schema
   (`models.py`): the design-doc Part VI table set (experiment, sample_taxonomy,
   sample_tag, target_channel, reagent_provenance, acquisition_run, fov,
