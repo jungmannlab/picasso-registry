@@ -4,6 +4,8 @@ the S0B-1 sample-taxon tree-distance ranking. How much must match is the
 caller's choice — the registry just exposes the axes.
 """
 
+import pytest
+
 from picasso_registry.testing import mock_registry
 
 
@@ -128,6 +130,15 @@ def test_target_and_modality_compose(client):
     assert _runs(cohort) == {"r_hela_tirf"}  # TIRF & CD20
 
 
+def test_target_class_filter(client):
+    _seed(client)
+    cohort = client.get(
+        "/cohort",
+        params={"taxon_id": "hela", "target_class": "intracellular_protein"},
+    ).json()
+    assert _runs(cohort) == {"r_cos7_tirf"}  # only Nup96 is intracellular
+
+
 # ── ranking + back-compat ────────────────────────────────────────────────
 
 
@@ -167,3 +178,12 @@ def test_client_mock_new_cohort_params():
         assert _runs(cohort) == {"r1"}
         # a non-matching axis value yields an empty cohort (not an error).
         assert reg.cohort("hela", modality="HILO") == []
+        # an explicit empty target_set overlaps no run -> [] (not the full
+        # cohort); enforced client-side since the wire can't carry an empty
+        # list distinctly from an omitted one.
+        assert reg.cohort("hela", target_set=[]) == []
+        # ... but a real overlap still matches.
+        assert _runs(reg.cohort("hela", target_set=["CD20"])) == {"r1"}
+        # a misspelled filter name raises rather than silently unfiltering.
+        with pytest.raises(TypeError):
+            reg.cohort("hela", modallity="TIRF")

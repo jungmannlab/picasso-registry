@@ -63,8 +63,10 @@ class Experiment(_ORMExtra):
     fixation: str | None = None
     mounting: str | None = None
     # A2 axis 3 (single-valued per experiment — a run doesn't mix modalities).
+    # All three are closed A2 vocabularies except buffer (free-form); validate
+    # dimensionality as the enum so stored values match the /cohort filter.
     acquisition_modality: Modality | None = None
-    dimensionality: str | None = None
+    dimensionality: DimensionalityValue | None = None
     buffer: str | None = None
     notes: str | None = None
     extra: dict | None = None

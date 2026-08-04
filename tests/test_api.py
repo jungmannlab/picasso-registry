@@ -65,6 +65,20 @@ def test_acquisition_run_requires_id(client):
     assert r.status_code == 422
 
 
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("acquisition_modality", "confocal"),  # not an A2 modality
+        ("dimensionality", "2d"),  # closed axis: must be "2D"/"3D"
+    ],
+)
+def test_experiment_rejects_non_a2_axis_values(client, field, value):
+    # closed A2 axis vocabularies are validated on write, so a stored value
+    # can never diverge from what the /cohort filter matches on.
+    r = client.post("/experiment", json={field: value})
+    assert r.status_code == 422
+
+
 def test_taxonomy_child_before_parent_rejected(client):
     r = client.post(
         "/sample_taxonomy", json={"id": "child", "parent_id": "missing"}

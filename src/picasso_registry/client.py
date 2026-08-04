@@ -72,17 +72,26 @@ class _BaseRegistry:
         buffer: str | None = None,
         target: str | None = None,
         target_set: list[str] | None = None,
-        **params: Any,
+        target_class: str | None = None,
     ) -> list[dict[str, Any]]:
         """Ranked cohort for ``taxon_id`` (A2 descriptor axes, register C12).
 
         All args past ``taxon_id`` are optional and keyword-only, so the
         S0B-1 ``cohort(taxon_id)`` / ``cohort(taxon_id, max_distance=...)``
         calls keep working unchanged. ``modality`` / ``dimensionality`` /
-        ``buffer`` (axis 3) and ``target`` / ``target_set`` (axis 2) are
-        independent filters — pass whichever axes the comparison requires.
-        ``None`` args are dropped so the server sees only what was supplied.
+        ``buffer`` (axis 3) and ``target`` / ``target_set`` / ``target_class``
+        (axis 2) are independent filters — pass whichever axes the comparison
+        requires. ``None`` args are dropped so the server sees only what was
+        supplied. The params are an explicit allow-list (no ``**kwargs``) so a
+        misspelled filter name raises ``TypeError`` instead of silently
+        returning an unfiltered cohort.
+
+        An explicitly empty ``target_set`` (and no ``target``/``target_class``)
+        overlaps no run, so it short-circuits to ``[]`` rather than letting the
+        empty list evaporate into "no filter" over the query string.
         """
+        if target_set == [] and target is None and target_class is None:
+            return []
         query: dict[str, Any] = {"taxon_id": taxon_id}
         optional = {
             "limit": limit,
@@ -92,9 +101,9 @@ class _BaseRegistry:
             "buffer": buffer,
             "target": target,
             "target_set": target_set,
+            "target_class": target_class,
         }
         query.update({k: v for k, v in optional.items() if v is not None})
-        query.update(params)
         return self._get("/cohort", query)
 
     def node_defaults(self, taxon_id: str) -> dict[str, Any]:

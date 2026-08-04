@@ -43,8 +43,9 @@ picasso-registry                       # uvicorn on 127.0.0.1:8000
   distance** (exact node first, then falling back *up* the tree; restricted to
   the same taxonomy root). Optional `max_distance=N` caps how far to generalize.
   The **A2 descriptor** (C12) adds independent optional filters: axis-2
-  `target`/`target_set` (target-set overlap) and axis-3 `modality`,
-  `dimensionality`, `buffer`. Pass whichever axes a given comparison needs —
+  `target`/`target_set` (name overlap) or `target_class` (closed vocabulary),
+  and axis-3 `modality`, `dimensionality`, `buffer`. Pass whichever axes a
+  given comparison needs —
   *how much* must match is the caller's choice (the registry doesn't hard-code
   a per-metric policy). Ranking stays tree-distance within the constrained set;
   a bare `taxon_id` call is unchanged.

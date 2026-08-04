@@ -21,14 +21,17 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
     dimensionality + buffer already lived on `experiment`. Leaf vocabularies
     (cell lines, target *names*) stay open strings. Alembic migration `0002`.
   - `GET /cohort`: independent optional filters — axis-2 (`target`/
-    `target_set` overlap) and axis-3 (`modality`/`dimensionality`/`buffer`).
-    The caller passes whichever axes a comparison needs; *how much* must match
-    is comparison-dependent and left to the caller, so the registry does not
-    hard-code a per-metric required-axes policy. Tree-distance ranking and
-    root restriction are preserved within the constrained set; a bare
-    `taxon_id` call is byte-for-byte the S0B-1 behaviour.
-  - `client.cohort(...)` gains keyword-only params for the new axes (no
-    breaking change; `None` args dropped). `openapi.json` regenerated.
+    `target_set` name overlap, or the closed `target_class`) and axis-3
+    (`modality`/`dimensionality`/`buffer`). The caller passes whichever axes a
+    comparison needs; *how much* must match is comparison-dependent and left to
+    the caller, so the registry does not hard-code a per-metric required-axes
+    policy. Tree-distance ranking and root restriction are preserved within the
+    constrained set; a bare `taxon_id` call is byte-for-byte the S0B-1
+    behaviour. The closed A2 axes (modality, dimensionality, target_class) are
+    validated on write, so a stored value can't diverge from the filter enum.
+  - `client.cohort(...)` gains keyword-only params for the new axes (explicit
+    allow-list, no `**kwargs`, so a typo'd filter raises; an explicit empty
+    `target_set` short-circuits to `[]`). `openapi.json` regenerated.
 - **S0B-1 — completed the registry contract.** Full append-only schema
   (`models.py`): the design-doc Part VI table set (experiment, sample_taxonomy,
   sample_tag, target_channel, reagent_provenance, acquisition_run, fov,
