@@ -64,6 +64,9 @@ class Experiment(Base):
     organism: Mapped[str | None] = mapped_column(String)
     fixation: Mapped[str | None] = mapped_column(String)
     mounting: Mapped[str | None] = mapped_column(String)
+    # A2 axis 3 modality (single-valued per experiment; closed enum at the
+    # schema layer). dimensionality + buffer are the other two axis-3 facets.
+    acquisition_modality: Mapped[str | None] = mapped_column(String)
     dimensionality: Mapped[str | None] = mapped_column(String)
     buffer: Mapped[str | None] = mapped_column(String)
     notes: Mapped[str | None] = mapped_column(String)
@@ -88,6 +91,8 @@ class TargetChannel(Base):
         ForeignKey("experiment.id")
     )
     target: Mapped[str | None] = mapped_column(String)
+    # A2 axis 2: target class (closed enum, validated at the schema layer).
+    target_class: Mapped[str | None] = mapped_column(String)
     binder: Mapped[str | None] = mapped_column(String)
     binder_lot: Mapped[str | None] = mapped_column(String)
     dye: Mapped[str | None] = mapped_column(String)
@@ -95,6 +100,9 @@ class TargetChannel(Base):
     imager_seq: Mapped[str | None] = mapped_column(String)
     imager_batch: Mapped[str | None] = mapped_column(String)
     imager_conc_nM: Mapped[float | None] = mapped_column(Float)
+    # A2: per-target (per-channel) illumination bundle.
+    exposure_ms: Mapped[float | None] = mapped_column(Float)
+    laser_power_mW: Mapped[float | None] = mapped_column(Float)
     round_index: Mapped[int | None] = mapped_column(Integer)
 
 

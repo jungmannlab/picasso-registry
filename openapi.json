@@ -723,6 +723,23 @@
       "Experiment": {
         "additionalProperties": true,
         "properties": {
+          "acquisition_modality": {
+            "anyOf": [
+              {
+                "enum": [
+                  "TIRF",
+                  "HILO",
+                  "spinning_disk",
+                  "light_sheet"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acquisition Modality"
+          },
           "buffer": {
             "anyOf": [
               {
@@ -749,6 +766,10 @@
           "dimensionality": {
             "anyOf": [
               {
+                "enum": [
+                  "2D",
+                  "3D"
+                ],
                 "type": "string"
               },
               {
@@ -2655,6 +2676,17 @@
             ],
             "title": "Experiment Id"
           },
+          "exposure_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure Ms"
+          },
           "id": {
             "anyOf": [
               {
@@ -2699,6 +2731,17 @@
             ],
             "title": "Imager Seq"
           },
+          "laser_power_mW": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Laser Power Mw"
+          },
           "round_index": {
             "anyOf": [
               {
@@ -2720,6 +2763,22 @@
               }
             ],
             "title": "Target"
+          },
+          "target_class": {
+            "anyOf": [
+              {
+                "enum": [
+                  "intracellular_protein",
+                  "membrane_protein",
+                  "glycan"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Class"
           }
         },
         "title": "TargetChannel",
@@ -3232,7 +3291,7 @@
     },
     "/cohort": {
       "get": {
-        "description": "Acquisition runs ranked by sample-taxon tree distance.\n\nExact-node matches rank first; when history is sparse the ranking\nfalls back *up* the tree (closer ancestors/siblings first). Only runs\nunder the same taxonomy root are considered \u2014 a different top-level\nsample class is not a fallback \u2014 and ``max_distance`` optionally caps\nhow far up the tree to generalize.",
+        "description": "Acquisition runs ranked by sample-taxon tree distance, optionally\nconstrained on the other A2 descriptor axes (register C12).\n\nRanking (axis 1) is unchanged: exact-node matches first, then falling\nback *up* the tree; only runs under the same taxonomy **root** are\nconsidered and ``max_distance`` caps how far to generalize.\n\nOn top of that, axis 2 (``target`` / ``target_set`` names, or the\nclosed ``target_class``) and axis 3 (``modality`` / ``dimensionality``\n/ ``buffer``) are **independent optional filters** \u2014 each narrows the\ncohort when supplied. *How much* must match is comparison-dependent and\nleft to the caller (the recommender/agent decides which axes to\nconstrain for a given metric); the registry does not hard-code that\npolicy. With no axis args this is exactly the S0B-1 taxon-only cohort.",
         "operationId": "query_cohort_cohort_get",
         "parameters": [
           {
@@ -3268,6 +3327,120 @@
                 }
               ],
               "title": "Max Distance"
+            }
+          },
+          {
+            "in": "query",
+            "name": "modality",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "TIRF",
+                    "HILO",
+                    "spinning_disk",
+                    "light_sheet"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Modality"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dimensionality",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "2D",
+                    "3D"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dimensionality"
+            }
+          },
+          {
+            "in": "query",
+            "name": "buffer",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Buffer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_set",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Set"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_class",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "intracellular_protein",
+                    "membrane_protein",
+                    "glycan"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Class"
             }
           }
         ],

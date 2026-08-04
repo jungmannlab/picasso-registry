@@ -19,8 +19,9 @@ FastAPI must see the real class objects (not stringized annotations) to build
 the request models and the OpenAPI spec.
 """
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
 from . import __version__, crud, models, schemas
@@ -161,19 +162,41 @@ def create_app() -> FastAPI:
         taxon_id: str,
         limit: int = 50,
         max_distance: int | None = None,
+        modality: schemas.Modality | None = None,
+        dimensionality: schemas.DimensionalityValue | None = None,
+        buffer: str | None = None,
+        target: str | None = None,
+        target_set: list[str] | None = Query(default=None),
+        target_class: schemas.TargetClass | None = None,
         session: Session = Depends(get_session),
     ):
-        """Acquisition runs ranked by sample-taxon tree distance.
+        """Acquisition runs ranked by sample-taxon tree distance, optionally
+        constrained on the other A2 descriptor axes (register C12).
 
-        Exact-node matches rank first; when history is sparse the ranking
-        falls back *up* the tree (closer ancestors/siblings first). Only runs
-        under the same taxonomy root are considered — a different top-level
-        sample class is not a fallback — and ``max_distance`` optionally caps
-        how far up the tree to generalize.
+        Ranking (axis 1) is unchanged: exact-node matches first, then falling
+        back *up* the tree; only runs under the same taxonomy **root** are
+        considered and ``max_distance`` caps how far to generalize.
+
+        On top of that, axis 2 (``target`` / ``target_set`` names, or the
+        closed ``target_class``) and axis 3 (``modality`` / ``dimensionality``
+        / ``buffer``) are **independent optional filters** — each narrows the
+        cohort when supplied. *How much* must match is comparison-dependent and
+        left to the caller (the recommender/agent decides which axes to
+        constrain for a given metric); the registry does not hard-code that
+        policy. With no axis args this is exactly the S0B-1 taxon-only cohort.
         """
         node = session.get(models.SampleTaxonomy, taxon_id)
         if node is None:
             raise HTTPException(status_code=404, detail="unknown taxon")
+
+        # Axis-2 target overlap. An empty/absent target set applies no target
+        # filter here — over HTTP an empty list is indistinguishable from an
+        # omitted one, so the "explicit empty set matches nothing" guarantee
+        # is enforced client-side (see RegistryClient.cohort) before the call.
+        targets = set(target_set or [])
+        if target:
+            targets.add(target)
+
         # Select only the columns the cohort needs (not whole ORM rows) so a
         # busy taxonomy root doesn't materialize entire entities just to rank
         # them. The joins are intentionally INNER: a run with no experiment,
@@ -196,6 +219,39 @@ def create_app() -> FastAPI:
                 models.Experiment.sample_taxon_id == models.SampleTaxonomy.id,
             )
         )
+        # Axis 3 filters (applied when supplied) — all single-valued on the
+        # experiment.
+        if modality:
+            query = query.filter(
+                models.Experiment.acquisition_modality == modality
+            )
+        if dimensionality:
+            query = query.filter(
+                models.Experiment.dimensionality == dimensionality
+            )
+        if buffer:
+            query = query.filter(models.Experiment.buffer == buffer)
+        # Axis 2 filters: the run's experiment must have a target_channel
+        # matching the requested target name(s) and/or the closed target_class.
+        # EXISTS keeps it one row per run rather than fanning out across
+        # channels. (A single channel need not satisfy both — target and
+        # target_class are independent EXISTS clauses.)
+        tc = models.TargetChannel
+        if targets:
+            query = query.filter(
+                exists().where(
+                    (tc.experiment_id == models.Experiment.id)
+                    & (tc.target.in_(targets))
+                )
+            )
+        if target_class:
+            query = query.filter(
+                exists().where(
+                    (tc.experiment_id == models.Experiment.id)
+                    & (tc.target_class == target_class)
+                )
+            )
+
         ids = path_ids(node.path)
         if ids:
             # Restrict to the same taxonomy root. autoescape escapes LIKE

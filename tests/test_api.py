@@ -5,9 +5,20 @@ import pytest
 # One representative payload per table (id omitted -> server mints a ULID,
 # except acquisition_run whose id is the externally-minted run_id).
 ROUND_TRIP = {
-    "experiment": {"operator": "alice", "organism": "human"},
+    "experiment": {
+        "operator": "alice",
+        "organism": "human",
+        "acquisition_modality": "TIRF",
+        "dimensionality": "2D",
+    },
     "sample_tag": {"experiment_id": "e1", "tag": "membrane"},
-    "target_channel": {"target": "CD20", "imager_conc_nM": 5.0},
+    "target_channel": {
+        "target": "CD20",
+        "target_class": "membrane_protein",
+        "imager_conc_nM": 5.0,
+        "exposure_ms": 100.0,
+        "laser_power_mW": 42.0,
+    },
     "reagent_provenance": {"docking_design_id": "R1"},
     "acquisition_run": {"id": "run-xyz", "status": "done"},
     "fov": {"pos_x": 1.5, "frame_count": 30000},
@@ -51,6 +62,20 @@ def test_metrics_requires_analysis_run_id(client):
 def test_acquisition_run_requires_id(client):
     # id is PycroFlow's run_id; the server must not mint a synthetic one
     r = client.post("/acquisition_run", json={"status": "done"})
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("acquisition_modality", "confocal"),  # not an A2 modality
+        ("dimensionality", "2d"),  # closed axis: must be "2D"/"3D"
+    ],
+)
+def test_experiment_rejects_non_a2_axis_values(client, field, value):
+    # closed A2 axis vocabularies are validated on write, so a stored value
+    # can never diverge from what the /cohort filter matches on.
+    r = client.post("/experiment", json={field: value})
     assert r.status_code == 422
 
 

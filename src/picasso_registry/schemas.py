@@ -9,8 +9,19 @@ through into the JSON ``extra`` column without a schema change.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# ── A2 descriptor controlled vocabularies (register C12, 2026-08-04) ──────
+# Closed axis enums frozen by A2. Leaf vocabularies that A2 left open (cell
+# lines, protein/glycan target *names*, organism) stay free-form strings —
+# only these three axes and the cohort match-depth selector are closed sets.
+Modality = Literal["TIRF", "HILO", "spinning_disk", "light_sheet"]  # axis 3
+DimensionalityValue = Literal["2D", "3D"]  # axis 3
+TargetClass = Literal[  # axis 2 target class (names stay open)
+    "intracellular_protein", "membrane_protein", "glycan"
+]
 
 
 class _ORM(BaseModel):
@@ -51,7 +62,11 @@ class Experiment(_ORMExtra):
     organism: str | None = None
     fixation: str | None = None
     mounting: str | None = None
-    dimensionality: str | None = None
+    # A2 axis 3 (single-valued per experiment — a run doesn't mix modalities).
+    # All three are closed A2 vocabularies except buffer (free-form); validate
+    # dimensionality as the enum so stored values match the /cohort filter.
+    acquisition_modality: Modality | None = None
+    dimensionality: DimensionalityValue | None = None
     buffer: str | None = None
     notes: str | None = None
     extra: dict | None = None
@@ -64,14 +79,18 @@ class SampleTag(_ORM):
 
 class TargetChannel(_ORM):
     experiment_id: str | None = None
-    target: str | None = None
+    target: str | None = None  # axis 2 target name (open vocabulary)
+    target_class: TargetClass | None = None  # A2 axis 2 (closed enum)
     binder: str | None = None
     binder_lot: str | None = None
-    dye: str | None = None
+    dye: str | None = None  # = fluorophore (per-target illumination bundle)
     dye_lot: str | None = None
     imager_seq: str | None = None
     imager_batch: str | None = None
     imager_conc_nM: float | None = None
+    # A2: exposure & laser power are per-target (per-channel), not run-level.
+    exposure_ms: float | None = None
+    laser_power_mW: float | None = None
     round_index: int | None = None
 
 
