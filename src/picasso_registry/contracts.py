@@ -145,11 +145,10 @@ class LocalizeFrames(Protocol):
       info: ``Baseline`` / ``Sensitivity`` / ``Gain`` / ``Pixelsize``).
     * ``params`` — localization parameters (at least ``Min. Net Gradient``
       and ``Box Size``).
-    * returns ``locs`` — the localization table (traditionally a numpy
-      structured array / recarray as saved to ``*_locs.hdf5``; the current
-      ``picasso.localize`` code path returns the equivalent pandas
-      DataFrame). Columns include ``frame, x, y, photons, sx, sy, bg,
-      lpx, lpy, net_gradient`` (+ ``z``/``lpz`` for 3D).
+    * returns ``locs`` — the localization table as a **pandas DataFrame**
+      (numpy recarrays are legacy; this stack's picasso returns DataFrames,
+      so the contract standardizes on that). Columns include ``frame, x, y,
+      photons, sx, sy, bg, lpx, lpy, net_gradient`` (+ ``z``/``lpz`` for 3D).
 
     Contract obligations on the implementation (WP-2):
 

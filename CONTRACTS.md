@@ -143,18 +143,15 @@ picasso.localize.localize_frames(frames, info, params) -> locs
   (`Baseline`, `Sensitivity`, `Gain`, `Pixelsize`).
 - **`params`** — localization parameters, at least `Min. Net Gradient` and
   `Box Size`.
-- **`locs`** (return) — the localization table with columns
-  `frame, x, y, photons, sx, sy, bg, lpx, lpy, net_gradient` (+ `z`/`lpz`
-  for 3D).
+- **`locs`** (return) — the localization table as a **pandas DataFrame**,
+  columns `frame, x, y, photons, sx, sy, bg, lpx, lpy, net_gradient` (+
+  `z`/`lpz` for 3D).
 
-**Return-type note (open, for WP-2 to nail down).** The brief and design-doc
-Part VI specify a **numpy structured array / recarray** — the traditional
-picasso locs format saved to `*_locs.hdf5`. The *current* `picasso.localize`
-code path instead returns the **equivalent pandas DataFrame** (same columns).
-The contract fixes the **signature and column set**; WP-2 must pick one
-concrete return type and state it (recarray recommended for `_locs.hdf5`
-parity, unless callers standardize on the DataFrame). Flagged here rather than
-silently assumed.
+**Return type: pandas DataFrame (decided).** The brief and design-doc Part VI
+say "recarray", but numpy recarrays are legacy — the picasso version this stack
+uses returns a **pandas DataFrame** (same columns), so the contract
+standardizes on that. Persisting to `*_locs.hdf5` is a separate concern owned
+by picasso's I/O layer, not this signature.
 
 **Implementation obligations (WP-2):**
 - **Absolute, contiguous `frame` indices across batches** — successive batches
