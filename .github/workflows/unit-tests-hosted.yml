@@ -7,6 +7,9 @@ name: Unit Tests (hosted)
 # config is needed. The base `pip install -e .` is wheel-only; heavier tooling
 # lives in the [dev] extra. There is no self-hosted tier in this repo.
 
+# `pull_request:` is intentionally unfiltered (fires for PRs into ANY base
+# branch) so stacked / intermediate-branch PRs still get tested; only the push
+# trigger is scoped to the long-lived branches.
 on:
   push:
     branches:
@@ -14,10 +17,6 @@ on:
       - master
       - develop
   pull_request:
-    branches:
-      - main
-      - master
-      - develop
 
 jobs:
   unit-tests:

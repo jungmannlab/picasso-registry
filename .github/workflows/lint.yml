@@ -1,11 +1,15 @@
 name: Lint
 
 # Style gate on a cheap GitHub-hosted runner. black and flake8 read their config
-# from pyproject.toml ([tool.black] / [tool.flake8] via Flake8-pyproject); the
-# versions come from the repo's own [dev] extra (installed below) so CI, the
-# local pre-commit hook, and developers all agree. This is a REQUIRED merge gate
-# for main — it must stay hosted (no lab hardware / secrets) so it never blocks
-# on an unavailable self-hosted runner and works on forks.
+# from pyproject.toml ([tool.black] / [tool.flake8] via Flake8-pyproject), and
+# their versions come from the repo's own [dev] extra (installed below) so CI
+# tracks the same source as the local pre-commit hook. This is a REQUIRED merge
+# gate for main — it must stay hosted (no lab hardware / secrets) so it never
+# blocks on an unavailable self-hosted runner and works on forks.
+#
+# `pull_request:` is intentionally unfiltered (fires for PRs into ANY base
+# branch) so stacked / intermediate-branch PRs still get linted; only the push
+# trigger is scoped to the long-lived branches.
 
 on:
   push:
@@ -14,10 +18,6 @@ on:
       - master
       - develop
   pull_request:
-    branches:
-      - main
-      - master
-      - develop
 
 jobs:
   lint:
