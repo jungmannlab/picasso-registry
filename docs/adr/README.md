@@ -9,4 +9,4 @@ Format: lightweight [MADR](https://adr.github.io/madr/). Status is one of
 
 | #   | Title                                     | Status   |
 | --- | ----------------------------------------- | -------- |
-| 001 | Service authentication (registry + monet) | proposed |
+| 001 | Service authentication (registry + monet) | accepted |

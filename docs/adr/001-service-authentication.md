@@ -1,7 +1,7 @@
 # 001 — Service authentication (the stack-wide pattern for registry + monet)
 
-- Status: proposed
-- Relates to: Open-Decisions **A9** (the ratifiable decision), **C11** (cluster
+- Status: accepted (ratified 2026-09-07 — Open-Decisions **C18**, "was A9")
+- Relates to: Open-Decisions **A9 → C18** (the ratified decision), **C11** (cluster
   SSH — a separate seam already decided), **A5** (agent external secrets)
 - Implemented by: **WP-3b** (registry) and the auth extension to **WP-12a** (monet)
 
