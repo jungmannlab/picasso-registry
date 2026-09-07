@@ -84,6 +84,13 @@ engine/session (SQLite now, Postgres-ready) and every record joins on `run_id`.
 The **thin client** (`client`) is a small requests wrapper over that HTTP API so
 dependent repos talk to the registry without importing the service.
 
+**Auth invariant (fail-closed):** never bind a non-loopback host without the
+shared auth helper configured — the service is append-only and going
+multi-instrument, so an unauthenticated networked bind permanently poisons the DB.
+Enforce bearer-token + `read`/`write` scopes behind any non-loopback bind; see
+`docs/adr/001-service-authentication.md` and Open-Decisions **A9**. The same helper
+also secures monet (WP-3b builds it; WP-12a reuses it).
+
 ## Standing pointers
 
 Paths so later sessions can `@`-reference them. Repo root is
