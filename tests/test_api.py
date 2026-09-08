@@ -268,6 +268,31 @@ def test_duplicate_acquisition_run_conflicts(client):
     assert again.status_code == 409
 
 
+def test_analysis_run_idempotency_key_conflicts(client):
+    # (run_id, module=kind, attempt) is the idempotency key: a replayed POST
+    # of the same triple is a clean 409, not a duplicate row.
+    key = {"acquisition_run_id": "run1", "kind": "cluster", "attempt": 1}
+    assert client.post("/analysis_run", json=key).status_code == 200
+    assert client.post("/analysis_run", json=key).status_code == 409
+    # a different attempt is a distinct run and inserts.
+    assert (
+        client.post("/analysis_run", json={**key, "attempt": 2}).status_code
+        == 200
+    )
+    rows = client.get("/analysis_run").json()
+    assert len(rows) == 2
+
+
+def test_analysis_run_partial_key_not_deduped(client):
+    # NULL is distinct in SQL: rows that omit part of the key (e.g. no
+    # attempt) stay append-only and never collide — backward compatible with
+    # the S0B-1 server-minted-id analysis rows.
+    body = {"acquisition_run_id": "run1", "kind": "live"}  # no attempt
+    assert client.post("/analysis_run", json=body).status_code == 200
+    assert client.post("/analysis_run", json=body).status_code == 200
+    assert len(client.get("/analysis_run").json()) == 2
+
+
 def test_acquisition_run_preserves_unknown_field(client):
     # an as-yet-untyped provenance field rides into extra, not silently lost
     client.post(

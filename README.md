@@ -17,11 +17,92 @@ pre-commit install
 pytest -q
 ```
 
-## Run the service
+## Deploy / run
+
+### Local / bare-metal
 ```bash
 picasso-registry                       # uvicorn on 127.0.0.1:8000
+python -m picasso_registry             # identical (module entry point)
 # interactive docs at http://127.0.0.1:8000/docs
 ```
+
+Host, port, and DB URL are configurable via flags or the matching env vars
+(flags win):
+
+```bash
+picasso-registry --host 0.0.0.0 --port 8080     # PAINT_REGISTRY_HOST/PORT
+picasso-registry --db-url sqlite:///./reg.db    # PAINT_REGISTRY_URL
+picasso-registry --reload                       # dev auto-reload
+```
+
+> **Auth invariant:** do **not** bind a non-loopback host (`--host 0.0.0.0`)
+> without the shared auth helper configured — the store is append-only and
+> multi-instrument, so an unauthenticated networked bind permanently poisons
+> the DB (see `CLAUDE.md` / Open-Decisions **A9**).
+
+### Container
+```bash
+docker build -t picasso-registry .
+# SQLite on a named volume (survives container replacement):
+docker run -p 8000:8000 -v registry-data:/data picasso-registry
+# Postgres-backed (recommended once volume/concurrency grows):
+docker run -p 8000:8000 \
+  -e PAINT_REGISTRY_URL=postgresql+psycopg://user:pass@db/picasso_registry \
+  picasso-registry
+```
+The image defaults to `--host 0.0.0.0` and a SQLite DB at `/data`; on start it
+runs `alembic upgrade head` (the single schema authority; idempotent once the
+DB is at head) and then serves. For a dedicated migrate stage, drop the
+`alembic upgrade head` from the image `CMD` and run it as its own step (below).
+
+### Migrations
+Alembic owns the production schema; `init_db()` / `create_all()` is a dev/test
+convenience.
+```bash
+export PAINT_REGISTRY_URL=postgresql+psycopg://user:pass@host/picasso_registry
+alembic upgrade head
+```
+
+### Pointing a client at it
+```python
+# Synchronous thin client ([client] extra):
+from picasso_registry.client import RegistryClient
+reg = RegistryClient("http://registry-host:8000")
+reg.log_acquisition(id="run1", status="running")   # raises if the registry is down
+
+# Resilient, non-blocking client — for acquisition/analysis code that must
+# never stall or crash if the registry is momentarily unreachable:
+from picasso_registry.buffered_client import BufferedRegistryClient
+with BufferedRegistryClient("http://registry-host:8000",
+                            buffer_path="registry_buffer.sqlite") as reg:
+    reg.log_acquisition(id="run1", status="running")   # returns immediately;
+    # writes are appended to a durable on-disk SQLite buffer and replayed by a
+    # background thread once the server is back. Reads stay synchronous.
+    reg.log_metrics(analysis_run_id="a1", nena_nm=3.0)
+```
+See **Resilient client** below for the delivery/idempotency guarantees.
+
+## Resilient client (best-effort, replay-on-failure)
+
+`picasso_registry.buffered_client.BufferedRegistryClient` wraps the plain
+`RegistryClient` for callers on the acquisition/analysis hot path:
+
+- **Writes never block or raise.** Each `log_*` / `create` / `bulk_ingest`
+  (every `POST`) is appended to a small **on-disk SQLite buffer** and returns
+  at once (`{"buffered": True}`). A background thread drains the buffer,
+  replaying each POST and retrying with backoff until the server is reachable;
+  a registry outage never stalls or crashes the caller. Reads (`get` / `list`
+  / `cohort` / `node_defaults` / `health`) stay **synchronous** and raise
+  normally. `flush(timeout=…)` drains on demand (tests / clean shutdown);
+  `close()` stops the flusher.
+- **The buffer is durable** — it survives a process crash or power loss on the
+  instrument PC, and is replayed by the next client pointed at the same file.
+- **Replay is idempotent.** At-least-once delivery is made safe by server-side
+  idempotency keys: `acquisition_run.id`, and `analysis_run`'s composite
+  `(acquisition_run_id, kind, attempt)`. A replayed duplicate returns **409**,
+  which the flusher treats as already-applied and drops — so no duplicate rows
+  (append-only is preserved). Set `attempt` (with `acquisition_run_id` + `kind`)
+  on analysis runs to make their retries idempotent.
 
 ## The contract
 

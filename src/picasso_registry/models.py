@@ -21,6 +21,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -238,12 +239,29 @@ class SampleMorphology(Base):
 
 class AnalysisRun(Base):
     __tablename__ = "analysis_run"
+    # Idempotency key (WP-3): a re-posted/replayed analysis_run for the same
+    # (run_id, module, attempt) must not create a duplicate row. When all three
+    # are supplied the composite UNIQUE makes a re-POST a clean 409 (the client
+    # treats that as replay-success). SQL NULL-is-distinct means rows that omit
+    # any of the three still insert freely, so this stays append-only and
+    # backward compatible with the S0B-1 server-minted-id rows.
+    __table_args__ = (
+        UniqueConstraint(
+            "acquisition_run_id",
+            "kind",
+            "attempt",
+            name="uq_analysis_run_natural_key",
+        ),
+    )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     fov_id: Mapped[str | None] = mapped_column(ForeignKey("fov.id"))
     acquisition_run_id: Mapped[str | None] = mapped_column(
         ForeignKey("acquisition_run.id")
     )
     kind: Mapped[str | None] = mapped_column(String)  # live|preprocess|cluster
+    # attempt: the retry/iteration index that, with (run_id, kind==module),
+    # forms the idempotency key. Nullable so un-keyed rows keep working.
+    attempt: Mapped[int | None] = mapped_column(Integer)
     compute_location: Mapped[str | None] = mapped_column(String)
     slurm_job_id: Mapped[str | None] = mapped_column(String)
     status: Mapped[str | None] = mapped_column(String)

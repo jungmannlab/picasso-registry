@@ -5,6 +5,7 @@ dist/
 *.egg-info/
 .venv/
 *.db
+*.sqlite
 src/*/_version.py
 .coverage
 .pytest_cache/

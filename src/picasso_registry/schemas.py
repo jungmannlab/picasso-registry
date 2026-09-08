@@ -189,6 +189,10 @@ class AnalysisRun(_ORMExtra):
     fov_id: str | None = None
     acquisition_run_id: str | None = None
     kind: str | None = None
+    # attempt completes the (run_id, module=kind, attempt) idempotency key
+    # (WP-3); when set with acquisition_run_id + kind a replay re-POST 409s
+    # instead of duplicating.
+    attempt: int | None = None
     compute_location: str | None = None
     slurm_job_id: str | None = None
     status: str | None = None
