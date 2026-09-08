@@ -355,9 +355,10 @@ def main(argv: list[str] | None = None) -> None:
         PAINT_REGISTRY_URL=postgresql+psycopg://… picasso-registry
 
     The DB URL is read from ``PAINT_REGISTRY_URL`` by ``db.py`` at import time;
-    ``--db-url`` is a convenience that sets that env var before the app builds
-    its engine. Migrations (``alembic upgrade head``) are the production path
-    for creating the schema — see the README "Deploy / run" section.
+    ``--db-url`` sets that env var *and* rebinds the engine (``db.configure``)
+    so it takes effect even though ``db.py`` was already imported. Migrations
+    (``alembic upgrade head``) are the production path for creating the schema
+    — see the README "Deploy / run" section.
     """
     import argparse
     import os
@@ -371,13 +372,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("PAINT_REGISTRY_PORT", "8000")),
+        default=None,
         help="bind port (env PAINT_REGISTRY_PORT; default 8000)",
     )
     parser.add_argument(
         "--db-url",
         default=None,
-        help="database URL; sets PAINT_REGISTRY_URL before startup",
+        help="database URL (rebinds the engine; also sets PAINT_REGISTRY_URL)",
     )
     parser.add_argument(
         "--reload",
@@ -386,14 +387,35 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
+    # Resolve the port from the env default lazily so a malformed
+    # PAINT_REGISTRY_PORT gives a clean usage error, not a raw traceback at
+    # parser-construction time. A bad --port on the CLI is already caught by
+    # argparse's own ``type=int``.
+    port = args.port
+    if port is None:
+        raw = os.environ.get("PAINT_REGISTRY_PORT", "8000")
+        try:
+            port = int(raw)
+        except ValueError:
+            parser.error(
+                f"invalid PAINT_REGISTRY_PORT {raw!r}: not an integer"
+            )
+
     if args.db_url:
+        # db.py reads PAINT_REGISTRY_URL and builds engine/SessionLocal at
+        # import time — which already happened when this module imported .db.
+        # Setting the env var alone would be ignored (uvicorn re-imports the
+        # already-loaded app in-process), so rebind the engine explicitly.
         os.environ["PAINT_REGISTRY_URL"] = args.db_url
+        from .db import configure
+
+        configure(args.db_url)
 
     import uvicorn
 
     uvicorn.run(
         "picasso_registry.app:app",
         host=args.host,
-        port=args.port,
+        port=port,
         reload=args.reload,
     )

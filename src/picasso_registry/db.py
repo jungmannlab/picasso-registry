@@ -31,10 +31,29 @@ def make_engine(url: str | None = None) -> Engine:
     return create_engine(url, future=True, connect_args=connect_args)
 
 
+def _session_factory(bind: Engine) -> sessionmaker:
+    return sessionmaker(
+        bind=bind, autoflush=False, expire_on_commit=False, future=True
+    )
+
+
 engine = make_engine()
-SessionLocal = sessionmaker(
-    bind=engine, autoflush=False, expire_on_commit=False, future=True
-)
+SessionLocal = _session_factory(engine)
+
+
+def configure(url: str) -> None:
+    """Rebind the module-level ``engine`` / ``SessionLocal`` to ``url``.
+
+    ``engine`` / ``SessionLocal`` are built from ``PAINT_REGISTRY_URL`` at
+    import time, so a caller that only learns the URL later (e.g.
+    ``app.main`` handling ``--db-url``) cannot switch DBs by setting the env
+    var alone — the module is already imported. ``get_session`` reads the
+    module-level ``SessionLocal`` at request time, so rebinding it here
+    redirects every subsequent session.
+    """
+    global engine, SessionLocal
+    engine = make_engine(url)
+    SessionLocal = _session_factory(engine)
 
 
 def create_all(bind: Engine | None = None) -> None:

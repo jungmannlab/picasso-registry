@@ -31,6 +31,66 @@ class FlakyTransport(_BaseRegistry):
         return self.inner._post(path, json)
 
 
+class _Resp:
+    def __init__(self, status_code):
+        self.status_code = status_code
+
+
+class _HttpError(Exception):
+    """requests/httpx-shaped error carrying an HTTP status (``.response``)."""
+
+    def __init__(self, status_code):
+        super().__init__(f"HTTP {status_code}")
+        self.response = _Resp(status_code)
+
+
+class StatusTransport(_BaseRegistry):
+    """POSTs fail with a fixed HTTP status until ``status`` is cleared, so the
+    buffer's retriable-vs-permanent classification can be exercised."""
+
+    def __init__(self, status):
+        self.inner = MockRegistryClient()
+        self.status = status  # None => healthy
+
+    def _get(self, path, params=None):
+        return self.inner._get(path, params)
+
+    def _post(self, path, json=None):
+        if self.status is not None:
+            raise _HttpError(self.status)
+        return self.inner._post(path, json)
+
+
+class LostResponseTransport(_BaseRegistry):
+    """Commits the first POST server-side but raises as if the response was
+    lost, so the buffer replays the *same* POST — exercising client-id dedup
+    for tables without a server-side natural key."""
+
+    def __init__(self):
+        self.inner = MockRegistryClient()
+        self.fail_next = True
+
+    def _get(self, path, params=None):
+        return self.inner._get(path, params)
+
+    def _post(self, path, json=None):
+        result = self.inner._post(path, json)  # commits before we "lose" it
+        if self.fail_next:
+            self.fail_next = False
+            raise ConnectionError("response lost after commit")
+        return result
+
+
+class _StuckThread:
+    """Stands in for a flusher that won't stop within the join timeout."""
+
+    def is_alive(self):
+        return True
+
+    def join(self, timeout=None):
+        return None
+
+
 def _buffered(tmp_path, transport, **kw):
     return BufferedRegistryClient(
         buffer_path=str(tmp_path / "buf.sqlite"),
@@ -222,3 +282,94 @@ def test_buffer_is_durable_across_client_restart(tmp_path):
         )
     finally:
         reg2.close()
+
+
+def test_retriable_4xx_stays_queued_until_recovered(tmp_path):
+    # 401/403/408/429 are recoverable (e.g. an expired/missing bearer token
+    # under the fail-closed auth invariant): the write must stay buffered and
+    # replay once the server accepts it, never be silently dropped.
+    transport = StatusTransport(status=401)
+    reg = _buffered(tmp_path, transport)
+    try:
+        reg.log_acquisition(id="held", status="running")
+        assert reg.flush(timeout=0.3) is False  # still 401 -> stays queued
+        assert reg.pending() == 1
+        transport.status = None  # token fixed / server healthy
+        assert reg.flush(timeout=5) is True
+        assert reg.pending() == 0
+        assert transport.inner.get("acquisition_run", "held")["status"] == (
+            "running"
+        )
+    finally:
+        reg.close()
+
+
+def test_permanent_4xx_is_dropped(tmp_path):
+    # A 422/400/404 can never succeed on replay; it is dropped so it does not
+    # wedge every later write behind it in the ordered buffer.
+    transport = StatusTransport(status=422)
+    reg = _buffered(tmp_path, transport)
+    try:
+        reg.log_acquisition(id="bad", status="x")
+        assert reg.flush(timeout=5) is True
+        assert reg.pending() == 0
+    finally:
+        reg.close()
+
+
+def test_close_flushes_pending_when_server_recovers(tmp_path):
+    # close()'s shutdown drain must actually deliver buffered writes when the
+    # server is reachable at shutdown, not silently leave them for the next
+    # client. Large intervals keep the background loop asleep in backoff so
+    # this exercises the final drain, not the periodic one.
+    transport = FlakyTransport()
+    transport.down = True
+    reg = BufferedRegistryClient(
+        buffer_path=str(tmp_path / "buf.sqlite"),
+        inner=transport,
+        flush_interval=30,
+        max_backoff=30,
+        start=True,
+    )
+    for i in range(4):
+        reg.log_acquisition(id=f"c{i}", status="running")
+    assert reg.pending() == 4
+    transport.down = False  # server back exactly as we shut down
+    reg.close()  # final drain must flush
+    stored = {r["id"] for r in transport.inner.list("acquisition_run")}
+    assert stored == {f"c{i}" for i in range(4)}
+
+
+def test_replay_dedups_server_minted_row_by_client_id(tmp_path):
+    # metrics has no natural key (its id is server-minted). The buffered
+    # client stamps a stable client-side id at enqueue, so a lost-response
+    # replay of the same buffered write collides on the PK (409) instead of
+    # inserting a second row.
+    transport = LostResponseTransport()
+    reg = _buffered(tmp_path, transport)
+    try:
+        reg.log_metrics(analysis_run_id="a1", nena_nm=3.0)
+        assert reg.flush(timeout=5) is True
+        assert reg.pending() == 0
+        rows = transport.inner.list("metrics")
+        assert len(rows) == 1  # committed once, replay deduped — no duplicate
+    finally:
+        reg.close()
+
+
+def test_close_leaves_connection_open_when_flusher_lingers(tmp_path):
+    # If the flusher can't stop in time (e.g. stuck in a slow POST), close()
+    # must not close the connection out from under it — that would raise in
+    # the daemon thread on its next buffer op. Leave it open instead.
+    transport = FlakyTransport()
+    reg = BufferedRegistryClient(
+        buffer_path=str(tmp_path / "buf.sqlite"),
+        inner=transport,
+        start=False,
+    )
+    reg._thread = _StuckThread()  # simulate a flusher that won't stop
+    reg.close()  # must not raise, must not close the connection
+    # pending() would raise sqlite3.ProgrammingError on a closed connection.
+    assert reg.pending() == 0
+    reg._thread = None
+    reg._conn.close()

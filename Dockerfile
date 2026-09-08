@@ -26,8 +26,10 @@ RUN pip install ".[client]"
 VOLUME ["/data"]
 EXPOSE 8000
 
-# Create the schema, then serve. In production prefer running
-# `alembic upgrade head` as a separate migrate step (see README); create_all
-# here keeps the single-container quick-start turnkey and is a no-op once the
-# tables exist.
-CMD ["sh", "-c", "python -c 'from picasso_registry.db import init_db; init_db()' && picasso-registry --host \"$PAINT_REGISTRY_HOST\" --port \"$PAINT_REGISTRY_PORT\""]
+# Apply migrations (the single schema authority), then serve. Alembic owns the
+# schema; `alembic upgrade head` on start is idempotent (a no-op once the DB is
+# at head) and avoids the create_all-vs-Alembic conflict of mixing the two on
+# one DB (create_all bypasses Alembic's version bookkeeping). For a dedicated
+# migrate stage, drop this from CMD and run `alembic upgrade head` as its own
+# step (see README).
+CMD ["sh", "-c", "alembic upgrade head && picasso-registry --host \"$PAINT_REGISTRY_HOST\" --port \"$PAINT_REGISTRY_PORT\""]

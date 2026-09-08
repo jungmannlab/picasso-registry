@@ -24,11 +24,15 @@ multiple threads are safe. Each buffered POST carries a monotonic ``seq`` so
 replay preserves submission order (parents before children).
 
 **Idempotency interplay.** Replay can double-send a POST whose response was
-lost. That is safe because every write path has a natural/PK idempotency key
-server-side (``acquisition_run.id``; ``analysis_run``'s
-``(acquisition_run_id, kind, attempt)``): a duplicate returns **409**, which the
+lost. Every buffered write carries a stable id: tables with a natural key use
+it (``acquisition_run.id``; ``analysis_run``'s
+``(acquisition_run_id, kind, attempt)``), and for the rest the client stamps a
+ULID ``id`` at enqueue time (see ``_post``) so server-minted-id rows
+(metrics/qc/fov/…) don't duplicate on replay. Either way a replayed duplicate
+collides on the primary key / unique constraint and returns **409**, which the
 flusher treats as *already-applied success* and drops from the buffer. So
-at-least-once delivery + server-side dedup == effectively exactly-once.
+at-least-once delivery + server-side dedup == effectively exactly-once for
+every table.
 
 Usage::
 
@@ -54,23 +58,41 @@ import threading
 import time
 from typing import Any
 
+from ulid import ULID
+
 from .client import RegistryClient, _BaseRegistry
 
 logger = logging.getLogger(__name__)
+
+
+def _new_id() -> str:
+    """Client-side ULID stamped on buffered writes as the idempotency key."""
+    return str(ULID())
 
 
 class _RegistryUnreachable(Exception):
     """Transient failure — keep the row buffered and retry."""
 
 
+# 4xx statuses a retry can still satisfy, so the row stays queued rather than
+# being dropped: auth that may be repaired (401/403 — the fail-closed bearer
+# token can be missing/expired at flush time), request timeout (408), and rate
+# limiting (429). Everything else in 4xx is a permanent client error.
+_RETRIABLE_4XX = frozenset({401, 403, 408, 429})
+
+
 def _is_permanent(status: int) -> bool:
     """A replayed POST that the server has definitively handled/rejected.
 
     409 == the row is already stored (idempotent replay succeeded). Other 4xx
-    are client errors (bad payload / validation) that will never succeed on
-    retry, so we must not wedge the buffer on them — drop and move on. 5xx and
-    connection errors are transient and stay queued.
+    are client errors (bad payload / validation / not found) that will never
+    succeed on retry, so we must not wedge the buffer on them — drop and move
+    on. Auth (401/403), request-timeout (408) and rate-limit (429) are
+    recoverable, so they stay queued instead of silently discarding a write.
+    5xx and connection errors are transient and stay queued too.
     """
+    if status in _RETRIABLE_4XX:
+        return False
     return status == 409 or 400 <= status < 500
 
 
@@ -138,11 +160,26 @@ class BufferedRegistryClient(_BaseRegistry):
         self._thread.start()
 
     def close(self) -> None:
-        """Stop the flusher (best-effort final drain) and close the buffer."""
+        """Stop the flusher (best-effort final drain) and close the buffer.
+
+        The connection is only closed once the flusher thread has actually
+        stopped. If the thread is still alive after the join timeout (e.g.
+        stuck in a slow POST), the connection is left open rather than closed
+        out from under the live thread — closing it would raise on the
+        thread's next buffer op. The daemon thread dies with the process and
+        the OS reclaims the handle; the durable buffer is intact on disk and
+        recovered by the next client.
+        """
         self._stop.set()
         self._wake.set()
         if self._thread:
             self._thread.join(timeout=self._flush_interval + 5)
+            if self._thread.is_alive():
+                logger.warning(
+                    "registry flusher did not stop in time; leaving the "
+                    "buffer connection open (recovered by the next client)"
+                )
+                return
         with self._lock:
             self._conn.close()
 
@@ -164,11 +201,22 @@ class BufferedRegistryClient(_BaseRegistry):
         asynchronous). If even the local buffer write fails, we log and swallow
         so the caller still proceeds; provenance is best-effort by design.
         """
+        body = dict(json_body or {})
+        # Stamp a client-side idempotency id at enqueue time so an
+        # at-least-once replay (a POST whose response was lost after the server
+        # committed) dedups by primary key server-side — a duplicate id returns
+        # 409, which the flusher drops. Without this only the two tables with a
+        # natural key (acquisition_run.id, analysis_run's composite) dedup;
+        # server-minted-id rows (metrics/qc/fov/…) would silently duplicate on
+        # replay. Skip /bulk (multi-row, no id column); never overwrite a
+        # caller-supplied id.
+        if path != "/bulk" and not body.get("id"):
+            body["id"] = _new_id()
         try:
             with self._lock:
                 self._conn.execute(
                     "INSERT INTO outbox(path, body) VALUES (?, ?)",
-                    (path, json.dumps(json_body or {})),
+                    (path, json.dumps(body)),
                 )
         except Exception:  # pragma: no cover - defensive
             logger.exception("registry buffer write failed; dropping %s", path)
@@ -259,17 +307,22 @@ class BufferedRegistryClient(_BaseRegistry):
                 self._wake.wait(timeout=backoff)
                 self._wake.clear()
                 backoff = min(backoff * 2, self._max_backoff)
-        # Best-effort final drain on shutdown (bounded, never blocks forever).
-        self._drain_once()
+        # Best-effort final drain on shutdown. ``respect_stop=False`` because
+        # ``_stop`` is set by now: the normal loop guard would short-circuit
+        # this to a no-op, so pending writes would never be flushed on close()
+        # despite the promise. Still bounded — it returns on the first
+        # transient failure (server unreachable), so it never blocks forever.
+        self._drain_once(respect_stop=False)
 
-    def _drain_once(self) -> bool:
+    def _drain_once(self, *, respect_stop: bool = True) -> bool:
         """Replay buffered rows until empty or the server goes unreachable.
 
         Returns ``True`` if the buffer emptied, ``False`` on a transient
-        failure (so the caller backs off).
+        failure (so the caller backs off). ``respect_stop=False`` keeps
+        draining even after ``_stop`` is set (the shutdown flush).
         """
         with self._drain_lock:
-            while not self._stop.is_set():
+            while not (respect_stop and self._stop.is_set()):
                 item = self._peek()
                 if item is None:
                     return True

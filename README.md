@@ -50,9 +50,10 @@ docker run -p 8000:8000 \
   -e PAINT_REGISTRY_URL=postgresql+psycopg://user:pass@db/picasso_registry \
   picasso-registry
 ```
-The image defaults to `--host 0.0.0.0` and a SQLite DB at `/data`; it runs
-`init_db()` on start (a no-op once the tables exist). For production prefer the
-Alembic migrate step below as a separate stage and drop the `create_all`.
+The image defaults to `--host 0.0.0.0` and a SQLite DB at `/data`; on start it
+runs `alembic upgrade head` (the single schema authority; idempotent once the
+DB is at head) and then serves. For a dedicated migrate stage, drop the
+`alembic upgrade head` from the image `CMD` and run it as its own step (below).
 
 ### Migrations
 Alembic owns the production schema; `init_db()` / `create_all()` is a dev/test
