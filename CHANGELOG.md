@@ -10,6 +10,34 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 ## [Unreleased]
 
 ### Added
+- **WP-3 — MVP hardening (deployable + resilient).**
+  - **Resilient, non-blocking client** — new
+    `picasso_registry.buffered_client.BufferedRegistryClient`, a best-effort
+    wrapper over `RegistryClient`. Writes (`log_*` / `create` / `bulk_ingest`,
+    every POST) are appended to a durable on-disk **SQLite outbox** and return
+    immediately (`{"buffered": True}`); a background daemon thread replays them
+    with exponential backoff until the server is reachable. Reads stay
+    synchronous. A registry outage never blocks or raises to the caller (the
+    acquisition/analysis hot path keeps running); the buffer survives a process
+    crash and is replayed by the next client on the same file. `flush(timeout)`
+    drains on demand; `close()`/context-manager stops the flusher.
+  - **Idempotent analysis-run writes keyed by `(run_id, module, attempt)`** —
+    `analysis_run` gains a nullable `attempt` column and a composite UNIQUE
+    `(acquisition_run_id, kind, attempt)` (`kind` == module). A replayed/
+    duplicated POST of the same triple returns **409** (reusing the existing
+    `Conflict` → 409 mapping), so replay can't create a duplicate row; the
+    buffered client treats 409 as already-applied and drops it. SQL NULL-is-
+    distinct keeps un-keyed rows append-only and backward compatible. Alembic
+    migration `0003`; `openapi.json` regenerated for the new field.
+  - **Runnable/configurable service** — `app.main()` now takes
+    `--host/--port/--db-url/--reload` (env `PAINT_REGISTRY_HOST` /
+    `PAINT_REGISTRY_PORT` / `PAINT_REGISTRY_URL`); added a
+    `python -m picasso_registry` entry point (`__main__.py`) equivalent to the
+    `picasso-registry` console script.
+  - **Container/deploy docs** — a `Dockerfile` (+ `.dockerignore`) and a README
+    "Deploy / run" section (bare-metal, container, migrations, pointing a
+    client at it, resilient-client guarantees). SQLite default, Postgres-ready.
+    `.gitignore` now ignores `*.sqlite` (the client buffer file).
 - **S0B-2 — published the shared data contracts.** New `CONTRACTS.md` freeze
   doc (repo root) + importable `picasso_registry.contracts` module freezing the
   four cross-repo shapes: `MetricVector` (a verbatim reuse of `schemas.Metrics`

@@ -154,6 +154,17 @@
             ],
             "title": "Acquisition Run Id"
           },
+          "attempt": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt"
+          },
           "compute_location": {
             "anyOf": [
               {

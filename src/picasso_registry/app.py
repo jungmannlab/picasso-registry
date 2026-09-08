@@ -343,7 +343,57 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
-def main() -> None:  # console entry point
+def main(argv: list[str] | None = None) -> None:
+    """Console entry point: run the service under uvicorn.
+
+    Host / port / DB URL / reload are configurable via CLI flags or the
+    matching env vars, so the same image runs in dev (loopback SQLite) and as
+    a networked service (Postgres) without a code change::
+
+        picasso-registry                          # 127.0.0.1:8000, SQLite
+        picasso-registry --host 0.0.0.0 --port 80
+        PAINT_REGISTRY_URL=postgresql+psycopg://… picasso-registry
+
+    The DB URL is read from ``PAINT_REGISTRY_URL`` by ``db.py`` at import time;
+    ``--db-url`` is a convenience that sets that env var before the app builds
+    its engine. Migrations (``alembic upgrade head``) are the production path
+    for creating the schema — see the README "Deploy / run" section.
+    """
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(prog="picasso-registry")
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("PAINT_REGISTRY_HOST", "127.0.0.1"),
+        help="bind host (env PAINT_REGISTRY_HOST; default 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("PAINT_REGISTRY_PORT", "8000")),
+        help="bind port (env PAINT_REGISTRY_PORT; default 8000)",
+    )
+    parser.add_argument(
+        "--db-url",
+        default=None,
+        help="database URL; sets PAINT_REGISTRY_URL before startup",
+    )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="auto-reload on code change (dev only)",
+    )
+    args = parser.parse_args(argv)
+
+    if args.db_url:
+        os.environ["PAINT_REGISTRY_URL"] = args.db_url
+
     import uvicorn
 
-    uvicorn.run("picasso_registry.app:app", host="127.0.0.1", port=8000)
+    uvicorn.run(
+        "picasso_registry.app:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+    )
