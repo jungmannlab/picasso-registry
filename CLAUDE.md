@@ -76,6 +76,15 @@ the aligned target below is what CLAUDE.md documents.
   deps and the `[client]` / `[dev]` extras live there.
 - **Tests:** `pytest -q`. Write/extend tests with every change; keep CI green.
 
+## Working defaults (how to behave in a session)
+
+In-session habits that complement the gates: the STOP-GATE and PR gates govern *when* and *where* to build; these govern *how*.
+
+- **Think before coding.** State your assumptions; if the brief is ambiguous or a simpler approach exists, say so and ask — don't pick silently.
+- **Minimal, necessary change.** No speculative abstraction, configurability, or error-handling for cases that can't occur. Every changed line should trace to the work order.
+- **Surgical diffs.** Match surrounding style; don't refactor or reformat untouched code, and don't delete pre-existing dead code — mention it instead. Remove only the orphans (imports/vars) your own change creates.
+- **Goal-driven.** Turn the brief's ACCEPTANCE into a check you can actually run, and verify it before opening the PR (hosted CI lint + unit is the required merge gate).
+
 ## Architecture (short)
 
 The FastAPI **service** (`app`) exposes append-only endpoints backed by
