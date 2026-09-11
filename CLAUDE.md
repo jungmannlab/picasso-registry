@@ -21,7 +21,7 @@ for the full picture — this file is the short standing context, not a duplicat
 
 ## Current branch
 
-`feature-FullAutoS0A` — PRs target `main`.
+New repo: work each task on its own `feature-*` branch and PR into `main` (release = tag `vX.Y.Z` on `main`). Don't pin the current branch here — check `git` or the tracker's branch-state note; a pinned branch is what goes stale.
 
 ## Commands
 
