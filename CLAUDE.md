@@ -21,7 +21,7 @@ for the full picture — this file is the short standing context, not a duplicat
 
 ## Current branch
 
-`feature-FullAutoS0A` — PRs target `main`.
+New repo: work each task on its own `feature-*` branch and PR into `main` (release = tag `vX.Y.Z` on `main`). Don't pin the current branch here — check `git` or the tracker's branch-state note; a pinned branch is what goes stale.
 
 ## Commands
 
@@ -75,6 +75,15 @@ the aligned target below is what CLAUDE.md documents.
 - **Packaging:** `pyproject.toml` only (no `setup.py` / `setup.cfg`). Runtime
   deps and the `[client]` / `[dev]` extras live there.
 - **Tests:** `pytest -q`. Write/extend tests with every change; keep CI green.
+
+## Working defaults (how to behave in a session)
+
+In-session habits that complement the gates: the STOP-GATE and PR gates govern *when* and *where* to build; these govern *how*.
+
+- **Think before coding.** State your assumptions; if the brief is ambiguous or a simpler approach exists, say so and ask — don't pick silently.
+- **Minimal, necessary change.** No speculative abstraction, configurability, or error-handling for cases that can't occur. Every changed line should trace to the work order.
+- **Surgical diffs.** Match surrounding style; don't refactor or reformat untouched code, and don't delete pre-existing dead code — mention it instead. Remove only the orphans (imports/vars) your own change creates.
+- **Goal-driven.** Turn the brief's ACCEPTANCE into a check you can actually run, and verify it before opening the PR (hosted CI lint + unit is the required merge gate).
 
 ## Architecture (short)
 
