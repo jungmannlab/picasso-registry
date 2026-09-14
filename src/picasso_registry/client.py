@@ -117,23 +117,39 @@ class RegistryClient(_BaseRegistry):
     """Talks to a running registry service over HTTP."""
 
     def __init__(
-        self, base_url: str = "http://127.0.0.1:8000", timeout: float = 10
+        self,
+        base_url: str = "http://127.0.0.1:8000",
+        timeout: float = 10,
+        token: str | None = None,
     ) -> None:
         if requests is None:
             raise RuntimeError("install picasso-registry[client] (requests)")
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        # An optional static bearer token (ADR 001 / C18). Present -> every
+        # request carries ``Authorization: Bearer <token>``; absent -> no header
+        # at all, so a loopback dev instance and the in-memory mock still work.
+        self.token = token
+
+    def _auth_headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.token}"} if self.token else {}
 
     def _get(self, path: str, params: dict | None = None) -> Any:
         r = requests.get(
-            f"{self.base_url}{path}", params=params, timeout=self.timeout
+            f"{self.base_url}{path}",
+            params=params,
+            timeout=self.timeout,
+            headers=self._auth_headers(),
         )
         r.raise_for_status()
         return r.json()
 
     def _post(self, path: str, json: dict | None = None) -> Any:
         r = requests.post(
-            f"{self.base_url}{path}", json=json, timeout=self.timeout
+            f"{self.base_url}{path}",
+            json=json,
+            timeout=self.timeout,
+            headers=self._auth_headers(),
         )
         r.raise_for_status()
         return r.json()

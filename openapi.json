@@ -2835,6 +2835,13 @@
         "title": "ValidationError",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "description": "Static bearer token mapping server-side to a (scope, label). Omit on a loopback dev instance (auth disabled).",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -2895,6 +2902,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Acquisition Run",
         "tags": [
           "acquisition_run"
@@ -2934,6 +2946,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Acquisition Run",
         "tags": [
           "acquisition_run"
@@ -2976,6 +2993,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Acquisition Run",
         "tags": [
           "acquisition_run"
@@ -3033,6 +3055,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Analysis Run",
         "tags": [
           "analysis_run"
@@ -3072,6 +3099,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Analysis Run",
         "tags": [
           "analysis_run"
@@ -3114,6 +3146,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Analysis Run",
         "tags": [
           "analysis_run"
@@ -3171,6 +3208,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Artifact",
         "tags": [
           "artifact"
@@ -3210,6 +3252,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Artifact",
         "tags": [
           "artifact"
@@ -3252,6 +3299,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Artifact",
         "tags": [
           "artifact"
@@ -3294,6 +3346,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Bulk Ingest",
         "tags": [
           "ingest"
@@ -3481,6 +3538,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Query Cohort",
         "tags": [
           "query"
@@ -3538,6 +3600,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Environment",
         "tags": [
           "environment"
@@ -3577,6 +3644,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Environment",
         "tags": [
           "environment"
@@ -3619,6 +3691,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Environment",
         "tags": [
           "environment"
@@ -3676,6 +3753,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Experiment",
         "tags": [
           "experiment"
@@ -3715,6 +3797,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Experiment",
         "tags": [
           "experiment"
@@ -3757,6 +3844,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Experiment",
         "tags": [
           "experiment"
@@ -3814,6 +3906,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Feedback",
         "tags": [
           "feedback"
@@ -3853,6 +3950,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Feedback",
         "tags": [
           "feedback"
@@ -3895,6 +3997,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Feedback",
         "tags": [
           "feedback"
@@ -3952,6 +4059,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Fluidics Round",
         "tags": [
           "fluidics_round"
@@ -3991,6 +4103,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Fluidics Round",
         "tags": [
           "fluidics_round"
@@ -4033,6 +4150,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Fluidics Round",
         "tags": [
           "fluidics_round"
@@ -4090,6 +4212,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Fov",
         "tags": [
           "fov"
@@ -4129,6 +4256,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Fov",
         "tags": [
           "fov"
@@ -4171,6 +4303,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Fov",
         "tags": [
           "fov"
@@ -4194,6 +4331,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Health",
         "tags": [
           "meta"
@@ -4251,6 +4393,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Illumination",
         "tags": [
           "illumination"
@@ -4290,6 +4437,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Illumination",
         "tags": [
           "illumination"
@@ -4332,6 +4484,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Illumination",
         "tags": [
           "illumination"
@@ -4389,6 +4546,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Interpretation",
         "tags": [
           "interpretation"
@@ -4428,6 +4590,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Interpretation",
         "tags": [
           "interpretation"
@@ -4470,6 +4637,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Interpretation",
         "tags": [
           "interpretation"
@@ -4527,6 +4699,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Metrics",
         "tags": [
           "metrics"
@@ -4566,6 +4743,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Metrics",
         "tags": [
           "metrics"
@@ -4608,6 +4790,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Metrics",
         "tags": [
           "metrics"
@@ -4651,6 +4838,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Node Defaults",
         "tags": [
           "query"
@@ -4708,6 +4900,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Qc",
         "tags": [
           "qc"
@@ -4747,6 +4944,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Qc",
         "tags": [
           "qc"
@@ -4789,6 +4991,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Qc",
         "tags": [
           "qc"
@@ -4846,6 +5053,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Reagent Provenance",
         "tags": [
           "reagent_provenance"
@@ -4885,6 +5097,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Reagent Provenance",
         "tags": [
           "reagent_provenance"
@@ -4927,6 +5144,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Reagent Provenance",
         "tags": [
           "reagent_provenance"
@@ -4984,6 +5206,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Resource Usage",
         "tags": [
           "resource_usage"
@@ -5023,6 +5250,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Resource Usage",
         "tags": [
           "resource_usage"
@@ -5065,6 +5297,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Resource Usage",
         "tags": [
           "resource_usage"
@@ -5122,6 +5359,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Sample Morphology",
         "tags": [
           "sample_morphology"
@@ -5161,6 +5403,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Sample Morphology",
         "tags": [
           "sample_morphology"
@@ -5203,6 +5450,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Sample Morphology",
         "tags": [
           "sample_morphology"
@@ -5260,6 +5512,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Sample Tag",
         "tags": [
           "sample_tag"
@@ -5299,6 +5556,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Sample Tag",
         "tags": [
           "sample_tag"
@@ -5341,6 +5603,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Sample Tag",
         "tags": [
           "sample_tag"
@@ -5398,6 +5665,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Sample Taxonomy",
         "tags": [
           "sample_taxonomy"
@@ -5437,6 +5709,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Sample Taxonomy",
         "tags": [
           "sample_taxonomy"
@@ -5479,6 +5756,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Sample Taxonomy",
         "tags": [
           "sample_taxonomy"
@@ -5536,6 +5818,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Target Channel",
         "tags": [
           "target_channel"
@@ -5575,6 +5862,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Target Channel",
         "tags": [
           "target_channel"
@@ -5617,6 +5909,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Target Channel",
         "tags": [
           "target_channel"

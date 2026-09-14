@@ -40,8 +40,13 @@ def _memory_engine():
     )
 
 
-def make_memory_app():
-    """A fresh app bound to its own shared in-memory SQLite database."""
+def make_memory_app(auth=None):
+    """A fresh app bound to its own shared in-memory SQLite database.
+
+    ``auth`` (an :class:`picasso_registry.auth.AuthConfig`) is passed through to
+    ``create_app`` so a caller can exercise the auth dependencies; omitted, the
+    app is unauthenticated (the default zero-config mock path).
+    """
     engine = _memory_engine()
     session_factory = sessionmaker(
         bind=engine, autoflush=False, expire_on_commit=False, future=True
@@ -50,7 +55,7 @@ def make_memory_app():
 
     Base.metadata.create_all(engine)
 
-    app = create_app()
+    app = create_app(auth=auth)
 
     def _override() -> Iterator[Any]:
         session = session_factory()

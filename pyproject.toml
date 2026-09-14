@@ -21,6 +21,11 @@ dependencies = [
 
 [project.optional-dependencies]
 client = ["requests>=2.31"]
+# `auth` is the shared service-auth helper (picasso_registry.auth) that monet
+# reuses (WP-12a): `require_scope`, the token->(scope,label) map, and the
+# fail-closed host guard. It needs only FastAPI (already a core dep); the extra
+# is the stable, intention-revealing install target for the other service.
+auth = ["fastapi>=0.110"]
 # `test` gives dependent repos the in-memory mock (picasso_registry.testing),
 # which drives the app through Starlette's TestClient (httpx).
 test = ["httpx>=0.27"]
