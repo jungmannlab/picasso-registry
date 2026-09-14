@@ -10,6 +10,41 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 ## [Unreleased]
 
 ### Added
+- **WP-3b — service authentication (shared helper for registry + monet).**
+  Implements the ratified auth model (ADR
+  `docs/adr/001-service-authentication.md`; Open-Decisions **C18**, "was A9").
+  - **Shared auth helper** — new `picasso_registry.auth` module (the `[auth]`
+    extra) that monet reuses (WP-12a): a `require_scope('read'|'write')` FastAPI
+    dependency, a config/env-driven token→`(scope, label)` map (`AuthConfig` /
+    `parse_tokens`, from `PAINT_REGISTRY_TOKENS`, format
+    `token:scope:label,…`), and a fail-closed host guard (`is_loopback_host`).
+    Static bearer tokens, two capability scopes, `write` a superset of `read`.
+  - **Scoped enforcement on every route** — `require_scope('read')` on every
+    `GET`, `require_scope('write')` on every `POST`/`bulk`. A missing/unknown
+    token is **401**, an insufficient scope (read token → POST) is **403**. The
+    scheme is table-driven (`create_app` wires it from the same route factory),
+    so no route is silently unprotected.
+  - **Fail-closed guard, two layers** — `app.main()` refuses to start bound to a
+    non-loopback host unless tokens are configured (fast-fail on the
+    console-script/Docker path), and a **request-time net** refuses any
+    non-loopback request against a disabled-auth service, so the invariant holds
+    even when the module app is served directly (gunicorn/uvicorn, bypassing the
+    startup guard). The loopback dev path and the in-memory test mock stay
+    zero-config (no tokens ⇒ no auth ⇒ unchanged).
+  - **`/health` is public** — the liveness/readiness probe is the one
+    intentional carve-out from "read on every GET" (probes/monitors carry no
+    bearer token; it exposes only `{status, version}`); the route-coverage test
+    asserts it is the *only* unguarded route.
+  - **`MockRegistryClient(token=…)`** — the in-memory mock can now authenticate
+    against an auth-enabled `make_memory_app(auth=…)`, mirroring
+    `RegistryClient`, so dependent repos can test their token handling.
+  - **Client bearer support** — `RegistryClient(token=…)` (and
+    `BufferedRegistryClient(token=…)`) send `Authorization: Bearer …`; absent ⇒
+    no header, so loopback dev and the in-memory mock still work.
+  - **Contract + docs** — `openapi.json` regenerated with the `HTTPBearer`
+    security scheme on every operation (export-sync test enforces it); README
+    "Authentication" section (token config, TLS via reverse proxy or uvicorn
+    `--ssl-*`, dashboards behind the proxy, per-machine token storage).
 - **WP-3 — MVP hardening (deployable + resilient).**
   - **Resilient, non-blocking client** — new
     `picasso_registry.buffered_client.BufferedRegistryClient`, a best-effort

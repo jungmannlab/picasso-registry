@@ -38,7 +38,51 @@ picasso-registry --reload                       # dev auto-reload
 > **Auth invariant:** do **not** bind a non-loopback host (`--host 0.0.0.0`)
 > without the shared auth helper configured — the store is append-only and
 > multi-instrument, so an unauthenticated networked bind permanently poisons
-> the DB (see `CLAUDE.md` / Open-Decisions **A9**).
+> the DB. This is enforced: the service **refuses to start** on a non-loopback
+> host with no tokens (see Authentication below, `CLAUDE.md`, and
+> `docs/adr/001-service-authentication.md`).
+
+### Authentication (scoped bearer tokens)
+
+The registry uses static **bearer tokens with two capability scopes** — `read`
+(enforced on every `GET`, except the public `/health` liveness probe) and
+`write` (every `POST`/`bulk`); `write` is a superset of `read`. A token maps
+server-side to a `(scope, label)`, where
+`label` is the owner — a machine role (`microscope-mercury`, `cluster`) or a
+person. The same helper (`picasso_registry.auth`, the `[auth]` extra) secures
+monet. See `docs/adr/001-service-authentication.md`.
+
+**Configure tokens** via the `PAINT_REGISTRY_TOKENS` env var — a comma/newline
+separated list of `token:scope:label` entries. Generate tokens with
+`python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+
+```bash
+export PAINT_REGISTRY_TOKENS="$MERCURY_TOKEN:write:microscope-mercury,
+$CLUSTER_TOKEN:write:cluster,
+$DASH_TOKEN:read:dashboard"
+picasso-registry --host 0.0.0.0 --port 8000
+```
+
+- **Zero-config on loopback.** With no tokens set the service is
+  unauthenticated — allowed **only** on a loopback bind (`127.0.0.1`). Two
+  layers keep "networked but unauthenticated" from happening: a **startup host
+  guard** refuses a non-loopback bind with no tokens (the `picasso-registry` /
+  Docker path), and a **request-time net** — a disabled-auth service refuses any
+  request from a non-loopback peer — which holds even if you serve the app
+  directly (`gunicorn picasso_registry.app:app`, bypassing the startup guard).
+  The in-memory test mock (`picasso_registry.testing`) is likewise token-free.
+- **Token storage.** Keep per-machine tokens in that machine's environment or a
+  **gitignored** secrets file — **never commit them, never store them in the
+  DB.** Per-writer tokens let one instrument be revoked/rotated without touching
+  the others.
+- **TLS.** Never send bearer tokens in cleartext. Terminate TLS at a reverse
+  proxy (caddy/nginx) on the service host, or run uvicorn with
+  `--ssl-keyfile`/`--ssl-certfile`. An internal-CA / self-signed cert is fine on
+  a trusted lab LAN.
+- **Dashboards / browsers** sit **behind the reverse proxy**, which does the
+  human auth (HTTP Basic, or lab SSO); the API itself stays bearer-token.
+  Dashboard view-vs-edit is exactly `read` vs `write`: a `read` token is safe to
+  share lab-wide, the `write` token is the sensitive one.
 
 ### Container
 ```bash
@@ -67,8 +111,10 @@ alembic upgrade head
 ```python
 # Synchronous thin client ([client] extra):
 from picasso_registry.client import RegistryClient
-reg = RegistryClient("http://registry-host:8000")
+reg = RegistryClient("http://registry-host:8000", token="…")  # token optional
 reg.log_acquisition(id="run1", status="running")   # raises if the registry is down
+# token= adds `Authorization: Bearer …`; omit it against a loopback dev instance
+# (no header, still works). BufferedRegistryClient takes the same token= kwarg.
 
 # Resilient, non-blocking client — for acquisition/analysis code that must
 # never stall or crash if the registry is momentarily unreachable:

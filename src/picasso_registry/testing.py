@@ -40,8 +40,13 @@ def _memory_engine():
     )
 
 
-def make_memory_app():
-    """A fresh app bound to its own shared in-memory SQLite database."""
+def make_memory_app(auth=None):
+    """A fresh app bound to its own shared in-memory SQLite database.
+
+    ``auth`` (an :class:`picasso_registry.auth.AuthConfig`) is passed through to
+    ``create_app`` so a caller can exercise the auth dependencies; omitted, the
+    app is unauthenticated (the default zero-config mock path).
+    """
     engine = _memory_engine()
     session_factory = sessionmaker(
         bind=engine, autoflush=False, expire_on_commit=False, future=True
@@ -50,7 +55,7 @@ def make_memory_app():
 
     Base.metadata.create_all(engine)
 
-    app = create_app()
+    app = create_app(auth=auth)
 
     def _override() -> Iterator[Any]:
         session = session_factory()
@@ -64,21 +69,30 @@ def make_memory_app():
 
 
 class MockRegistryClient(_BaseRegistry):
-    """``RegistryClient`` surface backed by an in-memory ``TestClient``."""
+    """``RegistryClient`` surface backed by an in-memory ``TestClient``.
 
-    def __init__(self, app=None) -> None:
+    ``token`` mirrors ``RegistryClient``: pass one to exercise an auth-enabled
+    app (``make_memory_app(auth=...)``); omit it for the default zero-config
+    mock. Absent ⇒ no ``Authorization`` header.
+    """
+
+    def __init__(self, app=None, token: str | None = None) -> None:
         from fastapi.testclient import TestClient
 
         self.app = app or make_memory_app()
         self.client = TestClient(self.app)
+        self.token = token
+
+    def _auth_headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.token}"} if self.token else {}
 
     def _get(self, path: str, params: dict | None = None) -> Any:
-        r = self.client.get(path, params=params)
+        r = self.client.get(path, params=params, headers=self._auth_headers())
         r.raise_for_status()
         return r.json()
 
     def _post(self, path: str, json: dict | None = None) -> Any:
-        r = self.client.post(path, json=json)
+        r = self.client.post(path, json=json, headers=self._auth_headers())
         r.raise_for_status()
         return r.json()
 

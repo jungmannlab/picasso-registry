@@ -110,14 +110,18 @@ class BufferedRegistryClient(_BaseRegistry):
         *,
         buffer_path: str = "registry_buffer.sqlite",
         timeout: float = 10,
+        token: str | None = None,
         flush_interval: float = 1.0,
         max_backoff: float = 30.0,
         inner: _BaseRegistry | None = None,
         start: bool = True,
     ) -> None:
         # ``inner`` lets tests inject a mock/TestClient-backed transport; in
-        # production it defaults to the real HTTP client.
-        self._inner = inner or RegistryClient(base_url, timeout=timeout)
+        # production it defaults to the real HTTP client. ``token`` threads the
+        # optional bearer token through to that client (ADR 001 / C18).
+        self._inner = inner or RegistryClient(
+            base_url, timeout=timeout, token=token
+        )
         self._buffer_path = buffer_path
         self._flush_interval = flush_interval
         self._max_backoff = max_backoff

@@ -25,8 +25,17 @@ from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
 from . import __version__, crud, models, schemas
+from .auth import AuthConfig, is_loopback_host, require_scope
 from .db import get_session
 from .taxonomy import deep_merge, path_ids, tree_distance
+
+# Route-level auth dependencies (ADR 001 / C18): read on every GET, write on
+# every POST/bulk. Attached via ``dependencies=[...]`` so they guard the route
+# without touching handler signatures, and so the ``HTTPBearer`` security scheme
+# lands in the OpenAPI contract. Enforcement is a no-op until tokens are
+# configured (loopback dev / in-memory mock stay zero-config).
+_READ = [Depends(require_scope("read"))]
+_WRITE = [Depends(require_scope("write"))]
 
 # (url path / bulk field, schema, ORM model, persist fn), FK-safe order.
 REGISTRY = [
@@ -122,15 +131,35 @@ def _register_crud(app, name, schema, orm_cls, persist_fn):
     get_one.__name__ = f"get_{name}"
     list_rows.__name__ = f"list_{name}"
 
-    app.post(f"/{name}", response_model=schema, tags=[name])(create)
-    app.get(f"/{name}/{{item_id}}", response_model=schema, tags=[name])(
-        get_one
-    )
-    app.get(f"/{name}", response_model=list[schema], tags=[name])(list_rows)
+    app.post(
+        f"/{name}",
+        response_model=schema,
+        tags=[name],
+        dependencies=_WRITE,
+    )(create)
+    app.get(
+        f"/{name}/{{item_id}}",
+        response_model=schema,
+        tags=[name],
+        dependencies=_READ,
+    )(get_one)
+    app.get(
+        f"/{name}",
+        response_model=list[schema],
+        tags=[name],
+        dependencies=_READ,
+    )(list_rows)
 
 
-def create_app() -> FastAPI:
-    """Build a fresh app instance (used by the service, tests, and export)."""
+def create_app(auth: AuthConfig | None = None) -> FastAPI:
+    """Build a fresh app instance (used by the service, tests, and export).
+
+    ``auth`` is the token map the ``require_scope`` dependencies enforce at
+    request time; it defaults to :meth:`AuthConfig.from_env`, so an unset
+    ``PAINT_REGISTRY_TOKENS`` yields an empty (disabled) config and the loopback
+    dev path / in-memory mock stay zero-config. It is stored on ``app.state`` so
+    the shared dependencies read it per request without a module-global.
+    """
     app = FastAPI(
         title="picasso-registry",
         version=__version__,
@@ -140,6 +169,7 @@ def create_app() -> FastAPI:
             "(acquisition_run.id)."
         ),
     )
+    app.state.auth = auth if auth is not None else AuthConfig.from_env()
 
     def _unknown_parent(request: Request, exc: crud.UnknownParent):
         return JSONResponse(status_code=400, content={"detail": str(exc)})
@@ -151,12 +181,19 @@ def create_app() -> FastAPI:
 
     app.add_exception_handler(crud.Conflict, _conflict)
 
+    # /health is deliberately unauthenticated: liveness/readiness probes and
+    # uptime monitors (k8s, Docker, the reverse proxy) can't carry a bearer
+    # token, and it exposes only {status, version}. This is the one intentional
+    # carve-out from "read on every GET" (asserted by the route-coverage test).
     @app.get("/health", tags=["meta"])
     def health() -> dict:
         return {"status": "ok", "version": __version__}
 
     @app.get(
-        "/cohort", response_model=list[schemas.CohortItem], tags=["query"]
+        "/cohort",
+        response_model=list[schemas.CohortItem],
+        tags=["query"],
+        dependencies=_READ,
     )
     def query_cohort(
         taxon_id: str,
@@ -285,6 +322,7 @@ def create_app() -> FastAPI:
         "/node_defaults",
         response_model=schemas.NodeDefaults,
         tags=["query"],
+        dependencies=_READ,
     )
     def node_defaults(taxon_id: str, session: Session = Depends(get_session)):
         """Inherited defaults for a node (descendant overrides ancestor)."""
@@ -315,7 +353,12 @@ def create_app() -> FastAPI:
             qc_rules=qc_rules,
         )
 
-    @app.post("/bulk", response_model=schemas.BulkResult, tags=["ingest"])
+    @app.post(
+        "/bulk",
+        response_model=schemas.BulkResult,
+        tags=["ingest"],
+        dependencies=_WRITE,
+    )
     def bulk_ingest(
         payload: schemas.BulkIngest,
         session: Session = Depends(get_session),
@@ -400,6 +443,21 @@ def main(argv: list[str] | None = None) -> None:
             parser.error(
                 f"invalid PAINT_REGISTRY_PORT {raw!r}: not an integer"
             )
+
+    # Fail-closed host guard (ADR 001 / C18): refuse to *start* on a
+    # non-loopback host unless tokens are configured, so a misconfigured
+    # networked bind fails fast with a clear error instead of serving. This
+    # covers the console-script / Docker path; the belt-and-suspenders is the
+    # request-time net in ``auth.require_scope`` (a disabled-auth service
+    # refuses any non-loopback request), which holds the invariant even when the
+    # module app is served directly (gunicorn/uvicorn, skipping this guard). The
+    # loopback dev path stays zero-config.
+    if not is_loopback_host(args.host) and not AuthConfig.from_env().enabled:
+        parser.error(
+            f"refusing to bind non-loopback host {args.host!r} without auth: "
+            "set PAINT_REGISTRY_TOKENS (token:scope:label,...) or bind "
+            "127.0.0.1 (see docs/adr/001-service-authentication.md)"
+        )
 
     if args.db_url:
         # db.py reads PAINT_REGISTRY_URL and builds engine/SessionLocal at
