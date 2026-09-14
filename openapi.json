@@ -4331,11 +4331,6 @@
             "description": "Successful Response"
           }
         },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
         "summary": "Health",
         "tags": [
           "meta"

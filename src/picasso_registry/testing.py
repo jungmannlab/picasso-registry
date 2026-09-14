@@ -69,21 +69,30 @@ def make_memory_app(auth=None):
 
 
 class MockRegistryClient(_BaseRegistry):
-    """``RegistryClient`` surface backed by an in-memory ``TestClient``."""
+    """``RegistryClient`` surface backed by an in-memory ``TestClient``.
 
-    def __init__(self, app=None) -> None:
+    ``token`` mirrors ``RegistryClient``: pass one to exercise an auth-enabled
+    app (``make_memory_app(auth=...)``); omit it for the default zero-config
+    mock. Absent ⇒ no ``Authorization`` header.
+    """
+
+    def __init__(self, app=None, token: str | None = None) -> None:
         from fastapi.testclient import TestClient
 
         self.app = app or make_memory_app()
         self.client = TestClient(self.app)
+        self.token = token
+
+    def _auth_headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.token}"} if self.token else {}
 
     def _get(self, path: str, params: dict | None = None) -> Any:
-        r = self.client.get(path, params=params)
+        r = self.client.get(path, params=params, headers=self._auth_headers())
         r.raise_for_status()
         return r.json()
 
     def _post(self, path: str, json: dict | None = None) -> Any:
-        r = self.client.post(path, json=json)
+        r = self.client.post(path, json=json, headers=self._auth_headers())
         r.raise_for_status()
         return r.json()
 

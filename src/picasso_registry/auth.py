@@ -137,6 +137,28 @@ def is_loopback_host(host: str) -> bool:
         return False
 
 
+def is_remote_client(request: Request) -> bool:
+    """True if the request came from a real off-box (non-loopback) peer.
+
+    ASGI servers (uvicorn/gunicorn) always report the peer as an **IP address**,
+    so a genuine network client is a parseable, non-loopback IP -> True. An
+    in-process ``TestClient`` reports a non-IP host (``testclient``) and a pure
+    in-process call reports no client at all; both are same-process and treated
+    as **not** remote -> False. This is the signal the disabled-auth path uses to
+    refuse an unauthenticated *networked* request no matter how the app was
+    launched (see :func:`require_scope`).
+    """
+    client = request.client
+    if client is None:
+        return False
+    try:
+        return not ipaddress.ip_address(client.host).is_loopback
+    except ValueError:
+        # A non-IP peer host is only ever the in-process test transport, never
+        # a real network connection — treat it as same-process (safe).
+        return False
+
+
 # One shared bearer extractor so FastAPI emits a single ``HTTPBearer`` security
 # scheme in the OpenAPI spec. ``auto_error=False`` lets us own the 401/403
 # responses (and the disabled/dev pass-through) instead of Starlette's default.
@@ -172,6 +194,25 @@ def require_scope(required: str):
     ) -> TokenInfo | None:
         config: AuthConfig = request.app.state.auth
         if not config.enabled:
+            # Auth disabled is only safe on a loopback/in-process bind. The
+            # startup host guard (app.main) refuses a non-loopback bind with no
+            # tokens, but that only covers the console-script path — serving the
+            # module app directly (``gunicorn picasso_registry.app:app --bind
+            # 0.0.0.0``) skips it. This request-time net makes the invariant
+            # hold by construction regardless of launch method: an
+            # unauthenticated request from a real remote peer is refused rather
+            # than allowed to touch the append-only DB.
+            if is_remote_client(request):
+                raise HTTPException(
+                    status_code=401,
+                    detail=(
+                        "service is unauthenticated and reachable off-box; "
+                        "refusing a non-loopback request — configure "
+                        "PAINT_REGISTRY_TOKENS (see "
+                        "docs/adr/001-service-authentication.md)"
+                    ),
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
             return None
         if credentials is None or not credentials.credentials:
             raise HTTPException(

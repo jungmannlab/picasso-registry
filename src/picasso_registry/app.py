@@ -181,7 +181,11 @@ def create_app(auth: AuthConfig | None = None) -> FastAPI:
 
     app.add_exception_handler(crud.Conflict, _conflict)
 
-    @app.get("/health", tags=["meta"], dependencies=_READ)
+    # /health is deliberately unauthenticated: liveness/readiness probes and
+    # uptime monitors (k8s, Docker, the reverse proxy) can't carry a bearer
+    # token, and it exposes only {status, version}. This is the one intentional
+    # carve-out from "read on every GET" (asserted by the route-coverage test).
+    @app.get("/health", tags=["meta"])
     def health() -> dict:
         return {"status": "ok", "version": __version__}
 
@@ -440,10 +444,13 @@ def main(argv: list[str] | None = None) -> None:
                 f"invalid PAINT_REGISTRY_PORT {raw!r}: not an integer"
             )
 
-    # Fail-closed host guard (ADR 001 / C18): refuse to serve on a non-loopback
-    # host unless tokens are configured. The module-level ``app`` already read
-    # the same env at import, so a networked bind is authenticated by
-    # construction — "networked but unauthenticated" is unreachable, and the
+    # Fail-closed host guard (ADR 001 / C18): refuse to *start* on a
+    # non-loopback host unless tokens are configured, so a misconfigured
+    # networked bind fails fast with a clear error instead of serving. This
+    # covers the console-script / Docker path; the belt-and-suspenders is the
+    # request-time net in ``auth.require_scope`` (a disabled-auth service
+    # refuses any non-loopback request), which holds the invariant even when the
+    # module app is served directly (gunicorn/uvicorn, skipping this guard). The
     # loopback dev path stays zero-config.
     if not is_loopback_host(args.host) and not AuthConfig.from_env().enabled:
         parser.error(

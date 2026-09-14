@@ -45,8 +45,9 @@ picasso-registry --reload                       # dev auto-reload
 ### Authentication (scoped bearer tokens)
 
 The registry uses static **bearer tokens with two capability scopes** — `read`
-(enforced on every `GET`) and `write` (every `POST`/`bulk`); `write` is a
-superset of `read`. A token maps server-side to a `(scope, label)`, where
+(enforced on every `GET`, except the public `/health` liveness probe) and
+`write` (every `POST`/`bulk`); `write` is a superset of `read`. A token maps
+server-side to a `(scope, label)`, where
 `label` is the owner — a machine role (`microscope-mercury`, `cluster`) or a
 person. The same helper (`picasso_registry.auth`, the `[auth]` extra) secures
 monet. See `docs/adr/001-service-authentication.md`.
@@ -63,10 +64,13 @@ picasso-registry --host 0.0.0.0 --port 8000
 ```
 
 - **Zero-config on loopback.** With no tokens set the service is
-  unauthenticated — allowed **only** on a loopback bind (`127.0.0.1`). The
-  fail-closed host guard refuses a non-loopback bind unless tokens are set, so
-  "networked but unauthenticated" is impossible by construction. The in-memory
-  test mock (`picasso_registry.testing`) is likewise token-free.
+  unauthenticated — allowed **only** on a loopback bind (`127.0.0.1`). Two
+  layers keep "networked but unauthenticated" from happening: a **startup host
+  guard** refuses a non-loopback bind with no tokens (the `picasso-registry` /
+  Docker path), and a **request-time net** — a disabled-auth service refuses any
+  request from a non-loopback peer — which holds even if you serve the app
+  directly (`gunicorn picasso_registry.app:app`, bypassing the startup guard).
+  The in-memory test mock (`picasso_registry.testing`) is likewise token-free.
 - **Token storage.** Keep per-machine tokens in that machine's environment or a
   **gitignored** secrets file — **never commit them, never store them in the
   DB.** Per-writer tokens let one instrument be revoked/rotated without touching

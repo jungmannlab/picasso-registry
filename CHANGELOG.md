@@ -24,10 +24,20 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
     token is **401**, an insufficient scope (read token → POST) is **403**. The
     scheme is table-driven (`create_app` wires it from the same route factory),
     so no route is silently unprotected.
-  - **Fail-closed host guard** — `app.main()` refuses to start bound to a
-    non-loopback host unless tokens are configured, making "networked but
-    unauthenticated" unreachable by construction. The loopback dev path and the
-    in-memory test mock stay zero-config (no tokens ⇒ no auth ⇒ unchanged).
+  - **Fail-closed guard, two layers** — `app.main()` refuses to start bound to a
+    non-loopback host unless tokens are configured (fast-fail on the
+    console-script/Docker path), and a **request-time net** refuses any
+    non-loopback request against a disabled-auth service, so the invariant holds
+    even when the module app is served directly (gunicorn/uvicorn, bypassing the
+    startup guard). The loopback dev path and the in-memory test mock stay
+    zero-config (no tokens ⇒ no auth ⇒ unchanged).
+  - **`/health` is public** — the liveness/readiness probe is the one
+    intentional carve-out from "read on every GET" (probes/monitors carry no
+    bearer token; it exposes only `{status, version}`); the route-coverage test
+    asserts it is the *only* unguarded route.
+  - **`MockRegistryClient(token=…)`** — the in-memory mock can now authenticate
+    against an auth-enabled `make_memory_app(auth=…)`, mirroring
+    `RegistryClient`, so dependent repos can test their token handling.
   - **Client bearer support** — `RegistryClient(token=…)` (and
     `BufferedRegistryClient(token=…)`) send `Authorization: Bearer …`; absent ⇒
     no header, so loopback dev and the in-memory mock still work.
