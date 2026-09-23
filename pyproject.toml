@@ -10,7 +10,31 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "MIB Lab" }]
-dependencies = [
+# Base is intentionally EMPTY: `import picasso_registry` needs nothing but the
+# package itself (__init__ only reads the setuptools-scm version). Every runtime
+# surface pulls exactly what it uses via an extra below. This keeps the shared
+# `[auth]` helper FastAPI-only, so an importer like monet (WP-12a) that only wants
+# `picasso_registry.auth` never drags the DB/migration stack (sqlalchemy, alembic,
+# python-ulid). Install `[server]` to run the service.
+dependencies = []
+
+[project.optional-dependencies]
+# The shared service-auth helper (picasso_registry.auth) that monet reuses
+# (WP-12a): `require_scope`, the token->(scope,label) map, and the fail-closed
+# host guard. FastAPI only — deliberately free of the DB/migration stack, so it
+# is a lightweight, intention-revealing install target for the other service.
+auth = ["fastapi>=0.110"]
+# The frozen cross-repo data contracts (picasso_registry.contracts /
+# picasso_registry.schemas) that PycroFlow / picasso-workflow / picasso-agent
+# import. Pydantic only.
+contracts = ["pydantic>=2.6"]
+# The thin + buffered REST clients (picasso_registry.client /
+# picasso_registry.buffered_client). requests is lazy-imported by the thin
+# client; the buffered client (SQLite outbox) needs python-ulid.
+client = ["requests>=2.31", "python-ulid>=2.2"]
+# The full FastAPI service: app, models, db, crud, Alembic migrations, and the
+# `picasso-registry` CLI. This is what a deployment installs.
+server = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "sqlalchemy>=2.0",
@@ -18,18 +42,19 @@ dependencies = [
     "alembic>=1.13",
     "python-ulid>=2.2",
 ]
-
-[project.optional-dependencies]
-client = ["requests>=2.31"]
-# `auth` is the shared service-auth helper (picasso_registry.auth) that monet
-# reuses (WP-12a): `require_scope`, the token->(scope,label) map, and the
-# fail-closed host guard. It needs only FastAPI (already a core dep); the extra
-# is the stable, intention-revealing install target for the other service.
-auth = ["fastapi>=0.110"]
 # `test` gives dependent repos the in-memory mock (picasso_registry.testing),
-# which drives the app through Starlette's TestClient (httpx).
-test = ["httpx>=0.27"]
-dev = ["pytest>=8", "httpx>=0.27", "black==25.9.0", "flake8>=7", "Flake8-pyproject>=1.2", "pre-commit>=3.7"]
+# which drives the real app through Starlette's TestClient — so it needs the full
+# server stack plus the clients and httpx.
+test = ["picasso-registry[server,client]", "httpx>=0.27"]
+dev = [
+    "picasso-registry[server,client,contracts]",
+    "pytest>=8",
+    "httpx>=0.27",
+    "black==25.9.0",
+    "flake8>=7",
+    "Flake8-pyproject>=1.2",
+    "pre-commit>=3.7",
+]
 
 [project.scripts]
 picasso-registry = "picasso_registry.app:main"

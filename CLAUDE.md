@@ -19,6 +19,14 @@ The importable package is `picasso_registry/` (under `src/`): `db`, `models`,
 and `client` (the thin requests-based client, `[client]` extra). See `README.md`
 for the full picture — this file is the short standing context, not a duplicate.
 
+The **base package is dependency-free**; every runtime dep lives in an extra so a
+consumer pulls only what it uses: `[auth]` (FastAPI-only — the shared
+`picasso_registry.auth` helper monet imports), `[contracts]` (pydantic — the
+cross-repo data contracts), `[client]` (requests + python-ulid), `[server]` (the
+full service: FastAPI/uvicorn/SQLAlchemy/pydantic/Alembic/python-ulid). `[test]`
+and `[dev]` compose over `[server]`. Keep `auth.py` importable with FastAPI alone
+(no DB/ORM imports) so `[auth]` stays lightweight.
+
 ## Current branch
 
 New repo: work each task on its own `feature-*` branch and PR into `main` (release = tag `vX.Y.Z` on `main`). Don't pin the current branch here — check `git` or the tracker's branch-state note; a pinned branch is what goes stale.
@@ -27,8 +35,9 @@ New repo: work each task on its own `feature-*` branch and PR into `main` (relea
 
 ```bash
 # Install (editable, with dev + test tooling). Use a python>=3.10 env.
-python -m pip install -e ".[dev]"
-python -m pip install -e ".[client]"   # adds requests for the thin client
+python -m pip install -e ".[dev]"      # everything (composes over [server])
+python -m pip install -e ".[server]"   # just run the service
+python -m pip install -e ".[auth]"     # just the shared auth helper (FastAPI-only)
 
 # Run the service (console script; equivalent to python -m picasso_registry.app)
 picasso-registry
@@ -72,8 +81,9 @@ the aligned target below is what CLAUDE.md documents.
   the changelog is the human-facing record of what each tag contains.
 - **Pre-commit:** `pre-commit install` once; hooks run basics (trailing
   whitespace, end-of-file, yaml) plus **black** and **flake8**.
-- **Packaging:** `pyproject.toml` only (no `setup.py` / `setup.cfg`). Runtime
-  deps and the `[client]` / `[dev]` extras live there.
+- **Packaging:** `pyproject.toml` only (no `setup.py` / `setup.cfg`). The base
+  package is dependency-free; runtime deps live in the `[auth]` / `[contracts]` /
+  `[client]` / `[server]` extras (with `[test]` / `[dev]` composing over them).
 - **Tests:** `pytest -q`. Write/extend tests with every change; keep CI green.
 
 ## Working defaults (how to behave in a session)

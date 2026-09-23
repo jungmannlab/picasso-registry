@@ -11,10 +11,30 @@ implementation playbook / plan for context.
 
 ## Quick start
 ```bash
-python -m pip install -e ".[dev]"     # service + tests
-python -m pip install -e ".[client]"  # adds requests for the thin client
+python -m pip install -e ".[dev]"     # everything: service + client + tests + tooling
 pre-commit install
 pytest -q
+```
+
+### Install extras
+
+The base package is **dependency-free** (importing `picasso_registry` alone pulls
+nothing); each surface installs exactly what it needs, so a consumer that only
+wants the shared auth helper never drags the DB/migration stack:
+
+| Extra | Installs | For |
+|---|---|---|
+| `[auth]` | FastAPI | the shared `picasso_registry.auth` helper (imported by monet) |
+| `[contracts]` | pydantic | the frozen cross-repo data contracts (`picasso_registry.contracts`) |
+| `[client]` | requests + python-ulid | the thin + buffered REST clients |
+| `[server]` | FastAPI, uvicorn, SQLAlchemy, pydantic, Alembic, python-ulid | run the service |
+| `[test]` | `[server,client]` + httpx | the in-memory mock for dependent repos' tests |
+| `[dev]` | `[server,client,contracts]` + pytest/black/flake8/pre-commit | contributing here |
+
+```bash
+python -m pip install -e ".[server]"   # run the FastAPI service
+python -m pip install -e ".[auth]"     # just the shared auth helper
+python -m pip install -e ".[client]"   # just the REST clients
 ```
 
 ## Deploy / run
