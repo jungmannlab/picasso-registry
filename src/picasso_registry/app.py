@@ -25,9 +25,16 @@ from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
 from . import __version__, crud, models, schemas
-from .auth import AuthConfig, is_loopback_host, require_scope
+from .auth import (
+    DEFAULT_TOKENS_ENV,
+    AuthConfig,
+    is_loopback_host,
+    parse_tokens,
+    require_scope,
+)
 from .db import get_session
 from .taxonomy import deep_merge, path_ids, tree_distance
+from .tokens import DEFAULT_ENV_FILE, DEFAULT_ENV_FILE_ENV, load_env_file
 
 # Route-level auth dependencies (ADR 001 / C18): read on every GET, write on
 # every POST/bulk. Attached via ``dependencies=[...]`` so they guard the route
@@ -159,6 +166,11 @@ def create_app(auth: AuthConfig | None = None) -> FastAPI:
     ``PAINT_REGISTRY_TOKENS`` yields an empty (disabled) config and the loopback
     dev path / in-memory mock stay zero-config. It is stored on ``app.state`` so
     the shared dependencies read it per request without a module-global.
+
+    On the default (from-env) path the default ``.env`` is loaded first, so a
+    token map written by ``picasso-registry token`` is honored even when the
+    module app is served directly (``gunicorn picasso_registry.app:app``),
+    not only via the console script.
     """
     app = FastAPI(
         title="picasso-registry",
@@ -169,7 +181,10 @@ def create_app(auth: AuthConfig | None = None) -> FastAPI:
             "(acquisition_run.id)."
         ),
     )
-    app.state.auth = auth if auth is not None else AuthConfig.from_env()
+    if auth is None:
+        load_env_file()
+        auth = AuthConfig.from_env()
+    app.state.auth = auth
 
     def _unknown_parent(request: Request, exc: crud.UnknownParent):
         return JSONResponse(status_code=400, content={"detail": str(exc)})
@@ -386,35 +401,76 @@ def create_app(auth: AuthConfig | None = None) -> FastAPI:
 app = create_app()
 
 
-def reload_auth(application=None, env_file: str | None = None) -> AuthConfig:
+def reload_auth(
+    application=None,
+    env_file: str | None = None,
+    *,
+    host: str | None = None,
+    prefer_env: bool = False,
+) -> AuthConfig:
     """Re-read the token map and refresh ``app.state.auth`` in place.
 
     Lets ``picasso-registry token add/revoke/rotate`` take effect on a running
-    server without a restart (tokens are otherwise read only at startup). When
-    ``env_file`` is given it is re-read with ``override=True`` so a *changed*
-    map replaces the value already in the process env, then the config is
-    rebuilt. Reassigning ``app.state.auth`` is a single attribute set, so an
-    in-flight request sees either the old or the new config — both valid.
+    server without a restart (tokens are otherwise read only at startup).
+    Only the token key is re-read from ``env_file`` — never the other
+    PAINT_REGISTRY_* keys, which startup owns. With ``prefer_env=True``
+    (the process env, not the file, supplied the map at startup — e.g. a
+    systemd ``Environment=``) the file never overrides it, keeping the
+    documented "process env wins" precedence stable across reloads. A missing
+    file counts as an empty map, so deleting the ``.env`` + SIGHUP revokes
+    everything — except that an empty map on a non-loopback ``host`` is
+    refused fail-closed (ADR 001): the previous config is kept and a
+    ``RuntimeError`` raised; a restart then hits the startup guard, which
+    refuses the bind. Reassigning ``app.state.auth`` is a single attribute
+    set, so an in-flight request sees either the old or the new config —
+    both valid.
     """
     import os
 
     application = app if application is None else application
-    if env_file and os.path.exists(env_file):
-        from dotenv import load_dotenv
+    raw = os.environ.get(DEFAULT_TOKENS_ENV)
+    if env_file and not prefer_env:
+        from dotenv import dotenv_values
 
-        load_dotenv(env_file, override=True)
-    application.state.auth = AuthConfig.from_env()
-    return application.state.auth
+        raw = (
+            dotenv_values(env_file).get(DEFAULT_TOKENS_ENV)
+            if os.path.exists(env_file)
+            else None
+        )
+    cfg = AuthConfig(parse_tokens(raw))
+    if host is not None and not is_loopback_host(host) and not cfg.enabled:
+        raise RuntimeError(
+            "refusing to reload an empty token map on non-loopback host "
+            f"{host!r}; keeping the previous tokens (restart the service to "
+            "apply — the startup guard then refuses the unauthenticated bind)"
+        )
+    # Mirror the accepted map into the env only after the guard, so a refused
+    # reload leaves no trace.
+    if raw is None:
+        os.environ.pop(DEFAULT_TOKENS_ENV, None)
+    else:
+        os.environ[DEFAULT_TOKENS_ENV] = raw
+    application.state.auth = cfg
+    return cfg
 
 
-def install_auth_reload(application=None, env_file: str | None = None) -> bool:
+def install_auth_reload(
+    application=None,
+    env_file: str | None = None,
+    *,
+    host: str | None = None,
+    prefer_env: bool = False,
+) -> bool:
     """Install a SIGHUP handler that live-reloads auth (Unix only).
 
     Returns True if installed. SIGHUP doesn't exist on Windows, where a token
     change needs a service restart instead. Must be called from the main
     thread (before ``uvicorn.run``); uvicorn only claims SIGINT/SIGTERM, so
-    SIGHUP is ours. Under ``--reload`` (dev) uvicorn serves from a child
-    process the handler doesn't reach — dev is loopback/token-free anyway.
+    SIGHUP is ours. Note the side effect: the handler replaces SIGHUP's
+    default terminate-on-hangup, so the caller should install it only when a
+    reload can matter (``main`` gates on auth being enabled). Under
+    ``--reload`` (dev) uvicorn serves from a child process the handler
+    doesn't reach — dev is loopback/token-free anyway.
     """
     import logging
     import signal
@@ -425,13 +481,18 @@ def install_auth_reload(application=None, env_file: str | None = None) -> bool:
 
     def _handler(signum, frame):
         try:
-            cfg = reload_auth(application, env_file)
+            cfg = reload_auth(
+                application, env_file, host=host, prefer_env=prefer_env
+            )
             logger.info(
                 "SIGHUP: reloaded auth (%d token(s) configured)",
                 len(cfg.tokens),
             )
         except Exception:
-            logger.warning("SIGHUP auth reload failed", exc_info=True)
+            logger.error(
+                "SIGHUP auth reload failed — keeping the previous token map",
+                exc_info=True,
+            )
 
     signal.signal(signal.SIGHUP, _handler)
     return True
@@ -449,18 +510,21 @@ def main(argv: list[str] | None = None) -> None:
         PAINT_REGISTRY_URL=postgresql+psycopg://… picasso-registry
         picasso-registry token add --scope write --label microscope-mercury
 
-    ``picasso-registry token …`` dispatches to the token-store admin CLI
-    (``tokens.token_cli``) instead of serving. The PAINT_REGISTRY_* settings
-    (including the token map that CLI writes) can also come from a ``.env``
-    file: ``--env-file PATH``, ``$PAINT_REGISTRY_ENV_FILE``, or a ``./.env``
-    if present — explicit process env vars win over the file. On Unix the
-    served process live-reloads the token map on ``SIGHUP``.
+    ``picasso-registry token …`` (the token-store admin CLI) is dispatched by
+    the console entry point (``cli.main``) *before* this module is imported,
+    so a malformed token map can't crash the tool that repairs it. The
+    PAINT_REGISTRY_* settings (including the token map that CLI writes) can
+    also come from a ``.env`` file: ``--env-file PATH``,
+    ``$PAINT_REGISTRY_ENV_FILE``, or a ``./.env`` if present — explicit
+    process env vars win over the file. On Unix a token-armed service
+    live-reloads the token map on ``SIGHUP``.
 
     The DB URL is read from ``PAINT_REGISTRY_URL`` by ``db.py`` at import time;
-    ``--db-url`` sets that env var *and* rebinds the engine (``db.configure``)
-    so it takes effect even though ``db.py`` was already imported. Migrations
-    (``alembic upgrade head``) are the production path for creating the schema
-    — see the README "Deploy / run" section.
+    ``--db-url`` (and a URL first supplied by the ``.env``) sets that env var
+    *and* rebinds the engine (``db.configure``) so it takes effect even though
+    ``db.py`` was already imported. Migrations (``alembic upgrade head``) are
+    the production path for creating the schema — see the README "Deploy /
+    run" section.
     """
     import argparse
     import os
@@ -468,18 +532,19 @@ def main(argv: list[str] | None = None) -> None:
 
     if argv is None:
         argv = sys.argv[1:]
-    if argv and argv[0] == "token":
-        # `token` has its own sub-command parser (add/list/revoke/rotate).
-        from .tokens import token_cli
 
-        raise SystemExit(token_cli(argv[1:]))
+    # Startup provenance snapshots, taken before the .env can add anything:
+    # whether the *process env* supplied the token map decides SIGHUP-reload
+    # precedence, and a .env-supplied DB URL must rebind the import-time
+    # engine below.
+    tokens_from_process_env = os.environ.get(DEFAULT_TOKENS_ENV) is not None
+    url_before = os.environ.get("PAINT_REGISTRY_URL")
 
     # The other flags read their env-var defaults at parser construction, so
     # the .env must be loaded first — pre-scan --env-file before the real
     # parse. A missing *explicit* path is an error (reported via the real
-    # parser for a proper usage message); the ./.env fallback is best-effort.
-    from .tokens import DEFAULT_ENV_FILE, DEFAULT_ENV_FILE_ENV
-
+    # parser for a proper usage message) and suppresses the ./.env fallback —
+    # never load a file the caller didn't ask for on an error path.
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument(
         "--env-file", default=os.environ.get(DEFAULT_ENV_FILE_ENV)
@@ -489,14 +554,21 @@ def main(argv: list[str] | None = None) -> None:
     if env_file is not None and not os.path.exists(env_file):
         env_file_error = f"env file not found: {env_file!r}"
         env_file = None
-    if env_file is None and os.path.exists(DEFAULT_ENV_FILE):
+    elif env_file is None and os.path.exists(DEFAULT_ENV_FILE):
         env_file = DEFAULT_ENV_FILE
     if env_file is not None:
         from dotenv import load_dotenv
 
         load_dotenv(env_file, override=False)
 
-    parser = argparse.ArgumentParser(prog="picasso-registry")
+    parser = argparse.ArgumentParser(
+        prog="picasso-registry",
+        epilog=(
+            "subcommand: `picasso-registry token add|list|revoke|rotate` "
+            "manages the bearer-token store (see `picasso-registry token "
+            "-h`)."
+        ),
+    )
     parser.add_argument(
         "--env-file",
         default=None,
@@ -544,6 +616,19 @@ def main(argv: list[str] | None = None) -> None:
                 f"invalid PAINT_REGISTRY_PORT {raw!r}: not an integer"
             )
 
+    # Refresh the served app's auth from the (possibly .env-augmented) env:
+    # the module-level ``app = create_app()`` ran at import, before the .env
+    # was loaded, and uvicorn's import string resolves to that same object —
+    # without this refresh the guard below could pass while the *served*
+    # config stayed empty (401 for valid tokens, unauthenticated on-box
+    # writes). A malformed map gets the same clean-usage-error treatment as a
+    # malformed port above.
+    try:
+        auth_cfg = AuthConfig.from_env()
+    except ValueError as exc:
+        parser.error(f"invalid {DEFAULT_TOKENS_ENV}: {exc}")
+    app.state.auth = auth_cfg
+
     # Fail-closed host guard (ADR 001 / C18): refuse to *start* on a
     # non-loopback host unless tokens are configured, so a misconfigured
     # networked bind fails fast with a clear error instead of serving. This
@@ -552,7 +637,7 @@ def main(argv: list[str] | None = None) -> None:
     # refuses any non-loopback request), which holds the invariant even when the
     # module app is served directly (gunicorn/uvicorn, skipping this guard). The
     # loopback dev path stays zero-config.
-    if not is_loopback_host(args.host) and not AuthConfig.from_env().enabled:
+    if not is_loopback_host(args.host) and not auth_cfg.enabled:
         parser.error(
             f"refusing to bind non-loopback host {args.host!r} without auth: "
             "set PAINT_REGISTRY_TOKENS (token:scope:label,...) or bind "
@@ -568,11 +653,28 @@ def main(argv: list[str] | None = None) -> None:
         from .db import configure
 
         configure(args.db_url)
+    elif os.environ.get("PAINT_REGISTRY_URL") != url_before:
+        # The .env supplied the URL after db.py already bound the engine at
+        # import (the cli entry point pre-loads it, but a direct main() call
+        # lands here) — rebind, mirroring the --db-url path, instead of
+        # silently serving against the default SQLite.
+        from .db import configure
+
+        configure(os.environ["PAINT_REGISTRY_URL"])
 
     # Live-reload tokens on SIGHUP (Unix) so `picasso-registry token` changes
     # apply without downtime. With reload=False uvicorn serves the already-
-    # imported module-level ``app`` in this process, so the handler reaches it.
-    install_auth_reload(app, env_file)
+    # imported module-level ``app`` in this process, so the handler reaches
+    # it. Installed only when auth is armed: a token-free dev run keeps
+    # SIGHUP's default terminate-on-hangup semantics (no orphan on a dropped
+    # SSH session).
+    if auth_cfg.enabled:
+        install_auth_reload(
+            app,
+            env_file,
+            host=args.host,
+            prefer_env=tokens_from_process_env,
+        )
 
     import uvicorn
 

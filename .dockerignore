@@ -6,6 +6,9 @@ dist/
 .venv/
 *.db
 *.sqlite
+# never bake a local token store into an image layer (main() auto-loads ./.env)
+.env
+*.env
 .pytest_cache/
 .coverage
 .claude/

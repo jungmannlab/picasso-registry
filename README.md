@@ -96,10 +96,18 @@ picasso-registry --env-file /etc/picasso-registry/registry.env --host 0.0.0.0
 ```
 
 `--env-file` loads every `PAINT_REGISTRY_*` setting (host/port/DB URL/tokens);
-explicit process env vars win over the file. On Unix a running service
-live-reloads the token map on `kill -HUP <pid>`, so add/rotate/revoke apply
-without downtime (systemd `EnvironmentFile` deployments need a restart instead
-— SIGHUP re-reads the `.env`, not systemd's environment). Setting
+explicit process env vars win over the file. On Unix a token-armed service
+live-reloads the token map on `kill -HUP <pid>` (in Docker:
+`docker kill --signal=HUP <container>`), so add/rotate/revoke apply without
+downtime — only the token key is re-read, and a reload that would leave a
+*networked* bind with an empty map is refused fail-closed (restart instead;
+the startup guard then refuses the bind). systemd `EnvironmentFile`
+deployments need a restart — SIGHUP re-reads the `.env`, not systemd's
+environment. Serving the module app directly
+(`gunicorn picasso_registry.app:app`) honors `$PAINT_REGISTRY_ENV_FILE` /
+`./.env` for the **token map** too; the `--env-file` flag and a
+`.env`-supplied **DB URL** are console-script conveniences — on the gunicorn
+path set `PAINT_REGISTRY_URL` in the process environment. Setting
 `PAINT_REGISTRY_TOKENS` directly in the environment still works:
 
 ```bash

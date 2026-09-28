@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import secrets
 import sys
 
@@ -74,18 +75,46 @@ def _default_env_file() -> str:
     return os.environ.get(DEFAULT_ENV_FILE_ENV) or DEFAULT_ENV_FILE
 
 
+def load_env_file(path: str | None = None) -> str | None:
+    """Best-effort load of PAINT_REGISTRY_* from a .env into the process env.
+
+    ``path=None`` resolves the default (``$PAINT_REGISTRY_ENV_FILE``, else
+    ``./.env``) and returns ``None`` silently when the file doesn't exist or
+    python-dotenv isn't installed; an explicit ``path`` must exist
+    (``FileNotFoundError``). Existing process env vars always win
+    (``override=False``). Returns the loaded path.
+    """
+    explicit = path is not None
+    path = path if explicit else _default_env_file()
+    if not os.path.exists(path):
+        if explicit:
+            raise FileNotFoundError(path)
+        return None
+    try:
+        from dotenv import load_dotenv
+    except ModuleNotFoundError:
+        if explicit:
+            raise
+        return None
+    load_dotenv(path, override=False)
+    return path
+
+
 def _read_map(env_file: str, env_var: str = DEFAULT_TOKENS_ENV):
-    """Return the current {token: TokenInfo} from the .env file (or live env)."""
+    """Return the current {token: TokenInfo} from the .env file.
+
+    Deliberately file-only: the CLI manages the *file*. Falling back to the
+    live process env here would silently copy a shell-exported (possibly
+    transient or malformed) map into a fresh .env on the next write.
+    """
     raw = None
     if os.path.exists(env_file):
         raw = _dotenv().dotenv_values(env_file).get(env_var)
-    if raw is None:
-        raw = os.environ.get(env_var)
     return parse_tokens(raw)
 
 
 def _write_map(env_file: str, tokens, env_var: str = DEFAULT_TOKENS_ENV):
-    """Serialize {token: TokenInfo} back to the .env and the live process env."""
+    """Serialize {token: TokenInfo} back to the .env file."""
     serialized = ",".join(
         "{}:{}:{}".format(tok, info.scope, info.label)
         for tok, info in tokens.items()
@@ -111,12 +140,31 @@ def _write_map(env_file: str, tokens, env_var: str = DEFAULT_TOKENS_ENV):
                 file=sys.stderr,
             )
     _dotenv().set_key(env_file, env_var, serialized, quote_mode="never")
-    # Reflect into this process too (a running server still needs a HUP).
-    os.environ[env_var] = serialized
 
 
 def _new_token() -> str:
     return secrets.token_urlsafe(_TOKEN_NBYTES)
+
+
+# The map's own separators (',;' between entries, ':' within, '#' starts a
+# dotenv inline comment, whitespace/newlines split entries) must never appear
+# in a label: parse_tokens would reject the whole store on the next read
+# (locking the service out of its token file) or dotenv would silently
+# truncate the label. Token *values* are token_urlsafe, so only labels need
+# the check.
+_LABEL_RE = re.compile(r"[A-Za-z0-9._-]+")
+
+
+def _check_label(label: str) -> bool:
+    if _LABEL_RE.fullmatch(label):
+        return True
+    print(
+        "error: invalid label {!r} — use letters, digits, '.', '_' or '-' "
+        "only (',;:#' and whitespace are separators/comments in the stored "
+        "map).".format(label),
+        file=sys.stderr,
+    )
+    return False
 
 
 def _print_new(env_file, value, scope, label, env_var, restart, client):
@@ -133,6 +181,8 @@ def _print_new(env_file, value, scope, label, env_var, restart, client):
 
 
 def _add(env_file, scope, label, env_var, restart, client):
+    if not _check_label(label):
+        return 2
     tokens = _read_map(env_file, env_var)
     if any(info.label == label for info in tokens.values()):
         print(

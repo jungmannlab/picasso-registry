@@ -14,14 +14,29 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
   from monet's `monet token` and homed here next to the shared auth helper):
   `add`/`list`/`revoke`/`rotate` generate high-entropy bearer tokens and
   maintain the `PAINT_REGISTRY_TOKENS` map in a `0600` `.env` file — no more
-  hand-invented token strings. Parametrized (`env_var`/`prog`/hints) so monet
-  can bind to it instead of keeping a drifting copy (follow-up monet PR).
+  hand-invented token strings. Labels are validated against the map's
+  separator characters (a `,;:#`/whitespace label would corrupt the store),
+  and the store is file-only (a shell-exported map never leaks into a fresh
+  `.env`). Parametrized (`env_var`/`prog`/hints) so monet can bind to it
+  instead of keeping a drifting copy (follow-up monet PR).
 - **`--env-file` / `PAINT_REGISTRY_ENV_FILE`** on the service: load
-  `PAINT_REGISTRY_*` settings (including the token map) from a `.env`
-  (defaults to `./.env` if present; process env wins).
+  `PAINT_REGISTRY_*` settings (including the token map and the DB URL, which
+  rebinds the import-time engine) from a `.env` (defaults to `./.env` if
+  present; process env wins). The console entry point is a new thin
+  `picasso_registry.cli` that dispatches `token` and loads the `.env` *before*
+  importing the service stack, so the repair tool survives a malformed live
+  map and token commands skip the FastAPI/SQLAlchemy import; a malformed map
+  on the serve path is a clean usage error, not a traceback. The default-env
+  token map is honored on the direct-module path
+  (`gunicorn picasso_registry.app:app`) too.
 - **SIGHUP auth live-reload** (`app.reload_auth` / `app.install_auth_reload`,
-  Unix): `kill -HUP <pid>` re-reads the token map on a running service, so
-  token add/rotate/revoke apply without downtime.
+  Unix; in Docker the CMD `exec`s the service so `docker kill --signal=HUP`
+  reaches it): re-reads *only* the token key, keeps the documented
+  process-env-wins precedence across reloads, treats a deleted `.env` as
+  revoke-all, and refuses fail-closed to leave a networked bind with an empty
+  map (ADR 001). Installed only when auth is armed, so a token-free dev run
+  keeps default SIGHUP semantics. `.env`/`*.env` added to `.dockerignore` so
+  a local token store is never baked into an image layer.
 - `python-dotenv` added to the `[server]` extra (lazy-imported; the base
   package and `[auth]` stay dependency-free).
 

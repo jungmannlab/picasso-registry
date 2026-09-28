@@ -32,5 +32,7 @@ EXPOSE 8000
 # at head) and avoids the create_all-vs-Alembic conflict of mixing the two on
 # one DB (create_all bypasses Alembic's version bookkeeping). For a dedicated
 # migrate stage, drop this from CMD and run `alembic upgrade head` as its own
-# step (see README).
-CMD ["sh", "-c", "alembic upgrade head && picasso-registry --host \"$PAINT_REGISTRY_HOST\" --port \"$PAINT_REGISTRY_PORT\""]
+# step (see README). `exec` makes the service PID 1 so signals reach it —
+# `docker kill --signal=HUP <container>` live-reloads the token map; without
+# it, sh stays PID 1 and swallows the HUP.
+CMD ["sh", "-c", "alembic upgrade head && exec picasso-registry --host \"$PAINT_REGISTRY_HOST\" --port \"$PAINT_REGISTRY_PORT\""]

@@ -60,7 +60,7 @@ dev = [
 ]
 
 [project.scripts]
-picasso-registry = "picasso_registry.app:main"
+picasso-registry = "picasso_registry.cli:main"
 picasso-registry-export-openapi = "picasso_registry.export_openapi:main"
 
 [tool.setuptools_scm]
