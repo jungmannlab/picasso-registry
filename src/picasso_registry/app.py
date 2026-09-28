@@ -386,6 +386,57 @@ def create_app(auth: AuthConfig | None = None) -> FastAPI:
 app = create_app()
 
 
+def reload_auth(application=None, env_file: str | None = None) -> AuthConfig:
+    """Re-read the token map and refresh ``app.state.auth`` in place.
+
+    Lets ``picasso-registry token add/revoke/rotate`` take effect on a running
+    server without a restart (tokens are otherwise read only at startup). When
+    ``env_file`` is given it is re-read with ``override=True`` so a *changed*
+    map replaces the value already in the process env, then the config is
+    rebuilt. Reassigning ``app.state.auth`` is a single attribute set, so an
+    in-flight request sees either the old or the new config — both valid.
+    """
+    import os
+
+    application = app if application is None else application
+    if env_file and os.path.exists(env_file):
+        from dotenv import load_dotenv
+
+        load_dotenv(env_file, override=True)
+    application.state.auth = AuthConfig.from_env()
+    return application.state.auth
+
+
+def install_auth_reload(application=None, env_file: str | None = None) -> bool:
+    """Install a SIGHUP handler that live-reloads auth (Unix only).
+
+    Returns True if installed. SIGHUP doesn't exist on Windows, where a token
+    change needs a service restart instead. Must be called from the main
+    thread (before ``uvicorn.run``); uvicorn only claims SIGINT/SIGTERM, so
+    SIGHUP is ours. Under ``--reload`` (dev) uvicorn serves from a child
+    process the handler doesn't reach — dev is loopback/token-free anyway.
+    """
+    import logging
+    import signal
+
+    if not hasattr(signal, "SIGHUP"):
+        return False
+    logger = logging.getLogger(__name__)
+
+    def _handler(signum, frame):
+        try:
+            cfg = reload_auth(application, env_file)
+            logger.info(
+                "SIGHUP: reloaded auth (%d token(s) configured)",
+                len(cfg.tokens),
+            )
+        except Exception:
+            logger.warning("SIGHUP auth reload failed", exc_info=True)
+
+    signal.signal(signal.SIGHUP, _handler)
+    return True
+
+
 def main(argv: list[str] | None = None) -> None:
     """Console entry point: run the service under uvicorn.
 
@@ -396,6 +447,14 @@ def main(argv: list[str] | None = None) -> None:
         picasso-registry                          # 127.0.0.1:8000, SQLite
         picasso-registry --host 0.0.0.0 --port 80
         PAINT_REGISTRY_URL=postgresql+psycopg://… picasso-registry
+        picasso-registry token add --scope write --label microscope-mercury
+
+    ``picasso-registry token …`` dispatches to the token-store admin CLI
+    (``tokens.token_cli``) instead of serving. The PAINT_REGISTRY_* settings
+    (including the token map that CLI writes) can also come from a ``.env``
+    file: ``--env-file PATH``, ``$PAINT_REGISTRY_ENV_FILE``, or a ``./.env``
+    if present — explicit process env vars win over the file. On Unix the
+    served process live-reloads the token map on ``SIGHUP``.
 
     The DB URL is read from ``PAINT_REGISTRY_URL`` by ``db.py`` at import time;
     ``--db-url`` sets that env var *and* rebinds the engine (``db.configure``)
@@ -405,8 +464,47 @@ def main(argv: list[str] | None = None) -> None:
     """
     import argparse
     import os
+    import sys
+
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] == "token":
+        # `token` has its own sub-command parser (add/list/revoke/rotate).
+        from .tokens import token_cli
+
+        raise SystemExit(token_cli(argv[1:]))
+
+    # The other flags read their env-var defaults at parser construction, so
+    # the .env must be loaded first — pre-scan --env-file before the real
+    # parse. A missing *explicit* path is an error (reported via the real
+    # parser for a proper usage message); the ./.env fallback is best-effort.
+    from .tokens import DEFAULT_ENV_FILE, DEFAULT_ENV_FILE_ENV
+
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument(
+        "--env-file", default=os.environ.get(DEFAULT_ENV_FILE_ENV)
+    )
+    env_file = pre.parse_known_args(argv)[0].env_file
+    env_file_error = None
+    if env_file is not None and not os.path.exists(env_file):
+        env_file_error = f"env file not found: {env_file!r}"
+        env_file = None
+    if env_file is None and os.path.exists(DEFAULT_ENV_FILE):
+        env_file = DEFAULT_ENV_FILE
+    if env_file is not None:
+        from dotenv import load_dotenv
+
+        load_dotenv(env_file, override=False)
 
     parser = argparse.ArgumentParser(prog="picasso-registry")
+    parser.add_argument(
+        "--env-file",
+        default=None,
+        help="load PAINT_REGISTRY_* settings (incl. the token map written by "
+        "`picasso-registry token`) from this .env before starting (env "
+        f"{DEFAULT_ENV_FILE_ENV}; default: ./{DEFAULT_ENV_FILE} if present; "
+        "process env vars win)",
+    )
     parser.add_argument(
         "--host",
         default=os.environ.get("PAINT_REGISTRY_HOST", "127.0.0.1"),
@@ -429,6 +527,8 @@ def main(argv: list[str] | None = None) -> None:
         help="auto-reload on code change (dev only)",
     )
     args = parser.parse_args(argv)
+    if env_file_error:
+        parser.error(env_file_error)
 
     # Resolve the port from the env default lazily so a malformed
     # PAINT_REGISTRY_PORT gives a clean usage error, not a raw traceback at
@@ -468,6 +568,11 @@ def main(argv: list[str] | None = None) -> None:
         from .db import configure
 
         configure(args.db_url)
+
+    # Live-reload tokens on SIGHUP (Unix) so `picasso-registry token` changes
+    # apply without downtime. With reload=False uvicorn serves the already-
+    # imported module-level ``app`` in this process, so the handler reaches it.
+    install_auth_reload(app, env_file)
 
     import uvicorn
 

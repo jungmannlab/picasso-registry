@@ -9,6 +9,22 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Added
+- **`picasso-registry token` admin CLI** (`picasso_registry.tokens`, ported
+  from monet's `monet token` and homed here next to the shared auth helper):
+  `add`/`list`/`revoke`/`rotate` generate high-entropy bearer tokens and
+  maintain the `PAINT_REGISTRY_TOKENS` map in a `0600` `.env` file — no more
+  hand-invented token strings. Parametrized (`env_var`/`prog`/hints) so monet
+  can bind to it instead of keeping a drifting copy (follow-up monet PR).
+- **`--env-file` / `PAINT_REGISTRY_ENV_FILE`** on the service: load
+  `PAINT_REGISTRY_*` settings (including the token map) from a `.env`
+  (defaults to `./.env` if present; process env wins).
+- **SIGHUP auth live-reload** (`app.reload_auth` / `app.install_auth_reload`,
+  Unix): `kill -HUP <pid>` re-reads the token map on a running service, so
+  token add/rotate/revoke apply without downtime.
+- `python-dotenv` added to the `[server]` extra (lazy-imported; the base
+  package and `[auth]` stay dependency-free).
+
 ## [0.1.0] - 2026-09-28
 
 ### Changed

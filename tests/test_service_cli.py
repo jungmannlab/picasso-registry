@@ -43,3 +43,45 @@ def test_bad_port_env_exits_cleanly(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         app_mod.main([])  # env default is used; int() would have crashed
     assert exc.value.code == 2
+
+
+def test_env_file_satisfies_networked_bind_guard(monkeypatch, tmp_path):
+    """Tokens written by `picasso-registry token` into a .env must arm the
+    fail-closed guard when the service is pointed at that file."""
+    import os
+    import signal
+
+    calls = _stub_uvicorn(monkeypatch)
+    monkeypatch.delenv("PAINT_REGISTRY_TOKENS", raising=False)
+    env_file = str(tmp_path / ".env")
+    from picasso_registry.tokens import token_cli
+
+    token_cli(
+        ["add", "--scope", "write", "--label", "m", "--env-file", env_file]
+    )
+    os.environ.pop("PAINT_REGISTRY_TOKENS")  # only the file has the map
+    original = signal.getsignal(signal.SIGHUP)
+    try:
+        app_mod.main(
+            ["--host", "0.0.0.0", "--port", "0", "--env-file", env_file]
+        )
+    finally:
+        signal.signal(signal.SIGHUP, original)  # main installs the reloader
+        os.environ.pop("PAINT_REGISTRY_TOKENS", None)  # load_dotenv set it
+    assert calls["host"] == "0.0.0.0"
+
+
+def test_networked_bind_without_tokens_still_refused(monkeypatch, tmp_path):
+    _stub_uvicorn(monkeypatch)
+    monkeypatch.delenv("PAINT_REGISTRY_TOKENS", raising=False)
+    monkeypatch.chdir(tmp_path)  # no ./.env fallback in reach
+    with pytest.raises(SystemExit) as exc:
+        app_mod.main(["--host", "0.0.0.0", "--port", "0"])
+    assert exc.value.code == 2
+
+
+def test_missing_explicit_env_file_errors(monkeypatch, tmp_path):
+    _stub_uvicorn(monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        app_mod.main(["--env-file", str(tmp_path / "absent.env")])
+    assert exc.value.code == 2
