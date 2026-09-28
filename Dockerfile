@@ -18,9 +18,10 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 COPY . /app
 
-# Service + client extras (client is handy for in-container smoke tests). No
-# [dev] tooling in the runtime image.
-RUN pip install ".[client]"
+# Service + client extras: [server] is the full FastAPI service + Alembic (the
+# base package is now dependency-free — deps live in extras), and [client] is
+# handy for in-container smoke tests. No [dev] tooling in the runtime image.
+RUN pip install ".[server,client]"
 
 # Default DB lives on a volume so it survives container replacement.
 VOLUME ["/data"]

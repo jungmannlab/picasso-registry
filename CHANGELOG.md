@@ -9,6 +9,24 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Changed
+- **Dependency-free base package; runtime deps moved into extras.** The base
+  package now declares no runtime dependencies — importing `picasso_registry`
+  (and the shared `picasso_registry.auth` helper) no longer drags the DB/service
+  stack. Install what you use: `[auth]` (FastAPI only — the shared helper monet
+  imports), `[contracts]` (pydantic), `[client]` (requests + python-ulid),
+  `[server]` (the full FastAPI service: uvicorn/SQLAlchemy/pydantic/Alembic/
+  python-ulid). `[test]`/`[dev]` compose over `[server]`.
+  - **Why:** `pip install picasso-registry[auth]` used to pull sqlalchemy,
+    alembic and python-ulid (unused by the auth module) into consumers like
+    monet's server. It is now FastAPI-only, so a lab using monet's serve API no
+    longer installs the registry's migration/DB stack. Preserves the ADR-001
+    "one audited auth implementation" (no vendoring/fork).
+  - **Action for deployers:** install/run the service with `[server]` (or
+    `[server,client]`); the Dockerfile now does this. Contributors keep using
+    `[dev]`. A new `tests/test_packaging.py` locks the invariant (auth import
+    pulls no DB stack; bare import pulls nothing).
+
 ### Added
 - **WP-3b — service authentication (shared helper for registry + monet).**
   Implements the ratified auth model (ADR
