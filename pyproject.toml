@@ -41,6 +41,9 @@ server = [
     "pydantic>=2.6",
     "alembic>=1.13",
     "python-ulid>=2.2",
+    # the `picasso-registry token` store + --env-file loading (tokens.py is
+    # lazy about it, so [auth] and the base package stay dotenv-free)
+    "python-dotenv>=1.0",
 ]
 # `test` gives dependent repos the in-memory mock (picasso_registry.testing),
 # which drives the real app through Starlette's TestClient — so it needs the full
@@ -57,7 +60,7 @@ dev = [
 ]
 
 [project.scripts]
-picasso-registry = "picasso_registry.app:main"
+picasso-registry = "picasso_registry.cli:main"
 picasso-registry-export-openapi = "picasso_registry.export_openapi:main"
 
 [tool.setuptools_scm]

@@ -72,9 +72,43 @@ server-side to a `(scope, label)`, where
 person. The same helper (`picasso_registry.auth`, the `[auth]` extra) secures
 monet. See `docs/adr/001-service-authentication.md`.
 
-**Configure tokens** via the `PAINT_REGISTRY_TOKENS` env var — a comma/newline
-separated list of `token:scope:label` entries. Generate tokens with
-`python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+**Mint and manage tokens** with the built-in admin CLI (server-side only — no
+HTTP surface; whoever runs it already has shell access to the box). It
+generates high-entropy values and maintains the `token:scope:label` map in a
+`0600`-permissioned `.env` file, so you never invent or hand-edit token
+strings:
+
+```bash
+picasso-registry token add --scope write --label microscope-mercury
+picasso-registry token add --scope read  --label dashboard
+picasso-registry token list                    # scopes + labels, never values
+picasso-registry token rotate --label microscope-mercury
+picasso-registry token revoke --label microscope-mercury
+```
+
+The map lives under `PAINT_REGISTRY_TOKENS` in `./.env` by default (override
+per call with `--env-file`, or globally with `PAINT_REGISTRY_ENV_FILE`). The
+service picks it up from the same file:
+
+```bash
+picasso-registry --host 0.0.0.0 --port 8000    # loads ./.env if present
+picasso-registry --env-file /etc/picasso-registry/registry.env --host 0.0.0.0
+```
+
+`--env-file` loads every `PAINT_REGISTRY_*` setting (host/port/DB URL/tokens);
+explicit process env vars win over the file. On Unix a token-armed service
+live-reloads the token map on `kill -HUP <pid>` (in Docker:
+`docker kill --signal=HUP <container>`), so add/rotate/revoke apply without
+downtime — only the token key is re-read, and a reload that would leave a
+*networked* bind with an empty map is refused fail-closed (restart instead;
+the startup guard then refuses the bind). systemd `EnvironmentFile`
+deployments need a restart — SIGHUP re-reads the `.env`, not systemd's
+environment. Serving the module app directly
+(`gunicorn picasso_registry.app:app`) honors `$PAINT_REGISTRY_ENV_FILE` /
+`./.env` for the **token map** too; the `--env-file` flag and a
+`.env`-supplied **DB URL** are console-script conveniences — on the gunicorn
+path set `PAINT_REGISTRY_URL` in the process environment. Setting
+`PAINT_REGISTRY_TOKENS` directly in the environment still works:
 
 ```bash
 export PAINT_REGISTRY_TOKENS="$MERCURY_TOKEN:write:microscope-mercury,
@@ -91,10 +125,11 @@ picasso-registry --host 0.0.0.0 --port 8000
   request from a non-loopback peer — which holds even if you serve the app
   directly (`gunicorn picasso_registry.app:app`, bypassing the startup guard).
   The in-memory test mock (`picasso_registry.testing`) is likewise token-free.
-- **Token storage.** Keep per-machine tokens in that machine's environment or a
-  **gitignored** secrets file — **never commit them, never store them in the
-  DB.** Per-writer tokens let one instrument be revoked/rotated without touching
-  the others.
+- **Token storage.** The server-side map lives in the `0600` `.env` the token
+  CLI maintains (or the machine's environment) — **never commit tokens, never
+  store them in the DB.** On the client, keep the single token value in that
+  machine's environment or its own gitignored secrets file. Per-writer tokens
+  let one instrument be revoked/rotated without touching the others.
 - **TLS.** Never send bearer tokens in cleartext. Terminate TLS at a reverse
   proxy (caddy/nginx) on the service host, or run uvicorn with
   `--ssl-keyfile`/`--ssl-certfile`. An internal-CA / self-signed cert is fine on
