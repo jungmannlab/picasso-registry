@@ -9,6 +9,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-28
+
 ### Added
 - **`picasso-registry token` admin CLI** (`picasso_registry.tokens`, ported
   from monet's `monet token` and homed here next to the shared auth helper):
