@@ -9,6 +9,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-28
+
 ### Changed
 - **Dependency-free base package; runtime deps moved into extras.** The base
   package now declares no runtime dependencies — importing `picasso_registry`
