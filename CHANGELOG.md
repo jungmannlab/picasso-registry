@@ -9,6 +9,15 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Added
+- **README: systemd deployment guide** (production bare-metal via conda/venv):
+  pinned tag install, unit file with `WorkingDirectory` = checkout (alembic) +
+  `Environment=PAINT_REGISTRY_URL` (absolute DB path, shared by migration and
+  service) + tokens via `--env-file` (keeps `systemctl reload` live token
+  reload working — an `EnvironmentFile=` would disable it by precedence),
+  upgrade procedure, and the field-seen pitfalls (CHDIR, alembic path, env
+  file location, relative SQLite URLs, DB backup).
+
 ## [0.2.0] - 2026-09-28
 
 ### Added
