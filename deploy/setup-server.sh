@@ -42,10 +42,11 @@ log() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 as_registry() { sudo -u "$REGISTRY_USER" env "HOME=$APP_DIR" "$@"; }
 
 # ---- 1. stop any existing service -------------------------------------------
-if systemctl list-unit-files 2>/dev/null | grep -q '^picasso-registry\.service'; then
-  log "stopping existing picasso-registry.service"
-  systemctl stop picasso-registry 2>/dev/null || true
-fi
+# Unconditional: the previous `list-unit-files | grep -q` gate could fail
+# spuriously (grep -q SIGPIPEs systemctl under pipefail) and skip the stop,
+# leaving the OLD process serving after the unit file was replaced.
+log "stopping any existing picasso-registry.service"
+systemctl stop picasso-registry 2>/dev/null || true
 
 # ---- 2. dedicated system user ------------------------------------------------
 if id -u "$REGISTRY_USER" >/dev/null 2>&1; then
@@ -161,12 +162,23 @@ WantedBy=multi-user.target
 UNITEOF
 
 # ---- 8. start ----------------------------------------------------------------
-log "reloading + starting"
+log "reloading + (re)starting"
 systemctl daemon-reload
 systemctl reset-failed picasso-registry 2>/dev/null || true
-systemctl enable --now picasso-registry
+systemctl enable picasso-registry
+# restart, not `enable --now`: --now is a plain `start`, which is a NO-OP on
+# an already-running unit — an upgrade re-run would leave the old process
+# (old code, old interpreter) serving the new unit's name.
+systemctl restart picasso-registry
 sleep 1
 systemctl --no-pager --full status picasso-registry || true
+# Belt-and-braces: the serving process must be the venv we just installed.
+MAIN_PID=$(systemctl show -p MainPID --value picasso-registry)
+if [ -n "$MAIN_PID" ] && [ "$MAIN_PID" != "0" ] \
+    && ! readlink "/proc/$MAIN_PID/exe" | grep -q "^$VENV_DIR/"; then
+  echo "WARNING: the running service ($(readlink /proc/$MAIN_PID/exe)) is NOT" >&2
+  echo "the freshly installed venv ($VENV_DIR) — investigate before trusting it." >&2
+fi
 
 echo
 log "health:    curl -s http://localhost:$REGISTRY_PORT/health"
