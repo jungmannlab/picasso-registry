@@ -9,6 +9,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-30
+
 ### Changed
 - **Dashboard compare tab: all column combinations.** X, Y and color-by each
   offer every column (tags, name, started_at, numerics). Categorical values
