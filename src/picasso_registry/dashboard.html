@@ -357,10 +357,13 @@ function renderRank(rows){
 }
 
 function buildSelectors(){
-  for (const [id, cols, dflt] of [["cx", NUM_COLS, "conc_pm"],
-      ["cy", NUM_COLS, "nena_nm"], ["cc", FILTER_COLS.concat("power_mw"), "power_mw"]]){
+  // every column everywhere: categorical values on X/Y render as category
+  // axes, numeric color-by renders as a continuous colorscale
+  const all = [...FILTER_COLS, "name", "started_at", ...NUM_COLS];
+  for (const [id, dflt] of [["cx","conc_pm"],["cy","nena_nm"],["cc","power_mw"]]){
     const sel = document.getElementById(id);
-    sel.innerHTML = cols.map(c => `<option${c===dflt?" selected":""}>${c}</option>`).join("");
+    sel.innerHTML = all.map(c =>
+      `<option${c===dflt?" selected":""}>${c}</option>`).join("");
   }
 }
 
@@ -374,20 +377,45 @@ function renderCompare(rows){
   const cx = document.getElementById("cx").value,
         cy = document.getElementById("cy").value,
         cc = document.getElementById("cc").value;
-  const groups = {};
-  for (const r of rows){
-    if (r[cx] == null || r[cy] == null) continue;
-    const g = String(r[cc] ?? "∅");
-    (groups[g] = groups[g] || {x:[],y:[],t:[]});
-    groups[g].x.push(r[cx]); groups[g].y.push(r[cy]);
-    groups[g].t.push(r.name || r.run_id);
+  const pts = rows.filter(r => r[cx] != null && r[cy] != null);
+  const cvals = pts.map(r => r[cc]).filter(v => v != null);
+  // all-numeric color column -> continuous colorscale; else grouped traces
+  const continuous = cvals.length > 0 &&
+    cvals.every(v => typeof v === "number");
+  let traces;
+  if (continuous){
+    const colored = pts.filter(r => r[cc] != null);
+    const uncolored = pts.filter(r => r[cc] == null);
+    traces = [{
+      x: colored.map(r => r[cx]), y: colored.map(r => r[cy]),
+      text: colored.map(r => `${r.name || r.run_id} · ${cc}=${fmt(r[cc])}`),
+      name: cc, mode: "markers", type: "scatter",
+      marker: {size: 9, opacity: .8, color: colored.map(r => r[cc]),
+               colorscale: "Viridis", showscale: true,
+               colorbar: {title: {text: cc}}},
+    }];
+    if (uncolored.length) traces.push({
+      x: uncolored.map(r => r[cx]), y: uncolored.map(r => r[cy]),
+      text: uncolored.map(r => r.name || r.run_id),
+      name: `${cc} ∅`, mode: "markers", type: "scatter",
+      marker: {size: 8, opacity: .5, color: "#9aa1ab"},
+    });
+  } else {
+    const groups = {};
+    for (const r of pts){
+      const g = String(r[cc] ?? "∅");
+      (groups[g] = groups[g] || {x:[],y:[],t:[]});
+      groups[g].x.push(r[cx]); groups[g].y.push(r[cy]);
+      groups[g].t.push(r.name || r.run_id);
+    }
+    traces = Object.entries(groups).map(([g,d]) => ({
+      x:d.x, y:d.y, text:d.t, name:g, mode:"markers", type:"scatter",
+      marker:{size:8, opacity:.75}}));
   }
-  const traces = Object.entries(groups).map(([g,d]) => ({
-    x:d.x, y:d.y, text:d.t, name:g, mode:"markers", type:"scatter",
-    marker:{size:8, opacity:.75}}));
   Plotly.newPlot("plot", traces,
-    {xaxis:{title:cx}, yaxis:{title:cy}, margin:{t:24},
-     legend:{title:{text:cc}}}, {responsive:true});
+    {xaxis:{title:{text:cx}}, yaxis:{title:{text:cy}}, margin:{t:24},
+     legend: continuous ? undefined : {title:{text:cc}}},
+    {responsive:true});
 }
 
 function exportCsv(){

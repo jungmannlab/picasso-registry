@@ -9,6 +9,13 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Changed
+- **Dashboard compare tab: all column combinations.** X, Y and color-by each
+  offer every column (tags, name, started_at, numerics). Categorical values
+  on X/Y render as category axes; a numeric color-by renders as a continuous
+  Viridis colorscale with a colorbar (rows without a color value plot grey),
+  while categorical color-by keeps the grouped legend.
+
 ### Added
 - **Scripted monet-parity deployment** (`deploy/setup-server.sh` +
   `deploy/picasso-registry.service`): dedicated `registry` system user, venv
