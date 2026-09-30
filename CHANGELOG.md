@@ -9,6 +9,12 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Changed
+- **Dashboard: inactive filters stay visible.** Filter controls whose column
+  is uniform (or absent) in the loaded data are no longer hidden — they are
+  greyed out/disabled with the constant value shown inline (`all (Cy3B)`,
+  `power_mw (= 35)`), so what *could* be filtered stays discoverable.
+
 ## [0.5.0] - 2026-09-30
 
 ### Added

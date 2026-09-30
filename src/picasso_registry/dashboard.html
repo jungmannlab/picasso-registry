@@ -29,6 +29,8 @@
           background:var(--card); }
   aside label { display:block; font-size:11.5px; color:var(--mut);
                 margin:8px 0 2px; text-transform:uppercase; }
+  aside .off { opacity:.45; }
+  aside .off select, aside .off input { cursor:not-allowed; }
   aside select, aside input { width:100%; padding:4px 6px;
                 border:1px solid var(--line); border-radius:6px; }
   main { flex:1; padding:14px 18px; overflow-x:auto; }
@@ -183,36 +185,50 @@ function esc(v){
 }
 
 function buildFilters(){
+  // Every filterable column is always shown — a column with nothing to
+  // filter (uniform or absent in the loaded data) is greyed out with its
+  // constant value inline, so what *could* be filtered stays discoverable.
   const aside = document.getElementById("filters");
   aside.querySelectorAll(".dyn").forEach(e => e.remove());
-  // categorical: one select per tag column that actually varies
+  // categorical: one select per tag column
   for (const col of FILTER_COLS){
     const vals = [...new Set(ROWS.map(r => r[col] ?? "∅"))].sort();
-    if (vals.length < 2) continue;
+    const active = vals.length >= 2;
     const lab = document.createElement("label");
-    lab.textContent = col; lab.className = "dyn";
+    lab.textContent = col;
+    lab.className = "dyn" + (active ? "" : " off");
     const sel = document.createElement("select");
-    sel.className = "dyn"; sel.id = "f_" + col; sel.onchange = render;
-    sel.innerHTML = '<option value="">all</option>' + vals.map(v =>
-      `<option>${esc(v)}</option>`).join("");
+    sel.className = lab.className;
+    sel.id = "f_" + col; sel.onchange = render;
+    if (active){
+      sel.innerHTML = '<option value="">all</option>' + vals.map(v =>
+        `<option>${esc(v)}</option>`).join("");
+    } else {
+      // single constant (or no data): show it, but nothing to choose
+      sel.innerHTML = `<option value="">all (${esc(vals[0] ?? "∅")})</option>`;
+      sel.disabled = true;
+    }
     aside.append(lab, sel);
   }
-  // numeric ranges: min/max per numeric column that actually varies —
-  // the sweep axes (conc/power/exposure) and the quality metrics
+  // numeric ranges: min/max per numeric column — the sweep axes
+  // (conc/power/exposure) and the quality metrics
   for (const col of NUM_COLS){
     const vals = [...new Set(ROWS.map(r => r[col])
       .filter(v => typeof v === "number"))];
-    if (vals.length < 2) continue;
-    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const active = vals.length >= 2;
     const lab = document.createElement("label");
-    lab.textContent = `${col} (${fmt(lo)} – ${fmt(hi)})`;
-    lab.className = "dyn";
+    lab.textContent = active
+      ? `${col} (${fmt(Math.min(...vals))} – ${fmt(Math.max(...vals))})`
+      : `${col} (${vals.length ? "= " + fmt(vals[0]) : "no data"})`;
+    lab.className = "dyn" + (active ? "" : " off");
     const box = document.createElement("div");
-    box.className = "dyn"; box.style.display = "flex"; box.style.gap = "4px";
+    box.className = lab.className;
+    box.style.display = "flex"; box.style.gap = "4px";
     for (const [end, ph] of [["lo","min"],["hi","max"]]){
       const inp = document.createElement("input");
       inp.id = `n_${col}_${end}`; inp.type = "number"; inp.step = "any";
       inp.placeholder = ph; inp.oninput = render;
+      inp.disabled = !active;
       box.append(inp);
     }
     aside.append(lab, box);
