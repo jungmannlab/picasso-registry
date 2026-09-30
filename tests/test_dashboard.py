@@ -78,6 +78,32 @@ def test_composite_ranking_handles_missing_metrics():
     assert scores[1] is None and scores[2] is None
 
 
+def test_composite_ranking_ignores_booleans_everywhere():
+    """bool is an int subclass: a stray JSON `true` must be excluded from
+    scoring exactly as from span computation, or scores leave [0,1] and
+    drift from the client-side recipe (review finding)."""
+    rows = [{"sbr": 2.0}, {"sbr": 4.0}, {"sbr": True}]
+    scores = composite_scores(rows)
+    assert scores[0] == 0.0 and scores[1] == 1.0
+    assert scores[2] is None
+    for s in scores:
+        assert s is None or 0.0 <= s <= 1.0
+
+
+def test_read_model_shows_newest_metrics_row(tmp_path):
+    """Append-only correction semantics: a re-posted metrics row for the
+    same analysis must win over the stale original (review finding)."""
+    with mock_registry() as reg:
+        _ingest_fixture(reg, tmp_path, n=1)
+        (row,) = reg._get("/dashboard/api/measurements")
+        (ana,) = reg.list("analysis_run")
+        reg.log_metrics(
+            analysis_run_id=ana["id"], nena_nm=9.99, scope="corrected"
+        )
+        (row,) = reg._get("/dashboard/api/measurements")
+        assert row["nena_nm"] == 9.99
+
+
 def test_dashboard_shell_is_public_but_data_needs_read_token():
     """monet's topology: the HTML shell carries no data and loads without a
     token; the read model requires read scope."""

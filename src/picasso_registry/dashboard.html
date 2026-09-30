@@ -4,7 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>picasso-registry · dashboard</title>
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<!-- pinned + SRI: a compromised CDN must not execute in a page holding the
+     read token; on integrity failure the Compare tab degrades gracefully -->
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"
+  integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7"
+  crossorigin="anonymous"></script>
 <style>
   :root { --bg:#f6f7f9; --card:#fff; --ink:#1c2430; --mut:#68707c;
           --line:#e3e6ea; --acc:#2563eb; --sim:#b45309; --acq:#047857; }
@@ -164,6 +168,14 @@ function fmt(v){
   return String(v).replace("T"," ").slice(0, 40);
 }
 
+// HTML-escape EVERY data value interpolated into innerHTML: row values come
+// from ingested qc.json files — a hostile measurement name must render as
+// text, never execute (it could exfiltrate the localStorage token).
+function esc(v){
+  return String(v).replace(/[&<>"']/g, c => (
+    {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
 function buildFilters(){
   const aside = document.getElementById("filters");
   aside.querySelectorAll(".dyn").forEach(e => e.remove());
@@ -175,7 +187,7 @@ function buildFilters(){
     const sel = document.createElement("select");
     sel.className = "dyn"; sel.id = "f_" + col; sel.onchange = render;
     sel.innerHTML = '<option value="">all</option>' + vals.map(v =>
-      `<option>${v}</option>`).join("");
+      `<option>${esc(v)}</option>`).join("");
     aside.append(lab, sel);
   }
 }
@@ -238,8 +250,12 @@ function renderTable(rows){
     `<th onclick="setSort('${c}')">${c}${c===sortKey?(sortDir>0?" ▲":" ▼"):""}</th>`
   ).join("");
   const body = sorted.map(r => "<tr>" + TABLE_COLS.map(c => {
-    if (c === "data_source") return `<td><span class="badge ${r[c]||"unknown"}">${r[c]||"?"}</span></td>`;
-    return `<td>${fmt(r[c])}</td>`;
+    if (c === "data_source"){
+      // class from a closed set only — never from data
+      const cls = ["simulated","acquired"].includes(r[c]) ? r[c] : "unknown";
+      return `<td><span class="badge ${cls}">${esc(r[c]||"?")}</span></td>`;
+    }
+    return `<td>${esc(fmt(r[c]))}</td>`;
   }).join("") + "</tr>").join("");
   document.getElementById("view-table").innerHTML =
     `<div class="card" style="padding:0;overflow:auto;max-height:78vh">
@@ -256,10 +272,10 @@ function renderRank(rows){
     if (!have.length) return "";
     const best = have.reduce((a,b) =>
       (hi ? b[k] > a[k] : b[k] < a[k]) ? b : a);
-    return `<b>${hi?"highest":"lowest"} ${k}</b>: ${best.name||best.run_id} (${fmt(best[k])})`;
+    return `<b>${hi?"highest":"lowest"} ${k}</b>: ${esc(best.name||best.run_id)} (${fmt(best[k])})`;
   }).filter(Boolean).join(" · ");
   const bars = ranked.slice(0, 40).map(([r,s], i) =>
-    `<div class="rankrow"><span class="lbl">${i===0?"★ ":""}${i+1}. ${r.name||r.run_id}</span>
+    `<div class="rankrow"><span class="lbl">${i===0?"★ ":""}${i+1}. ${esc(r.name||r.run_id)}</span>
      <div class="bar" style="width:${Math.round(s*420)}px"></div>
      <span>${s.toFixed(3)}</span></div>`).join("");
   document.getElementById("view-rank").innerHTML =
@@ -308,10 +324,15 @@ function renderCompare(rows){
 function exportCsv(){
   const rows = filtered();
   const cols = Object.keys(rows[0] || {});
-  const esc = v => v == null ? "" : /[",\n]/.test(String(v)) ?
-    '"' + String(v).replace(/"/g,'""') + '"' : String(v);
+  // quote on \r too, and neutralize spreadsheet formula injection (=+-@
+  // prefixes execute when the export is opened in Excel/LibreOffice)
+  const cell = v => {
+    let s = v == null ? "" : String(v);
+    if (/^[=+\-@]/.test(s)) s = "'" + s;
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  };
   const csv = [cols.join(",")].concat(
-    rows.map(r => cols.map(c => esc(r[c])).join(","))).join("\n");
+    rows.map(r => cols.map(c => cell(r[c])).join(","))).join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"}));
   a.download = "registry_measurements.csv"; a.click();

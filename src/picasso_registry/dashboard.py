@@ -74,7 +74,14 @@ def composite_scores(rows: list[dict]) -> list[float | None]:
         parts = []
         for key, higher_better in QUALITY_METRICS:
             v = r.get(key)
-            if key not in spans or not isinstance(v, (int, float)):
+            # bool is an int subclass — must be excluded here exactly as in
+            # the span pass above, or a stray JSON `true` scores out of
+            # [0,1] and drifts from the client-side reimplementation.
+            if (
+                key not in spans
+                or not isinstance(v, (int, float))
+                or isinstance(v, bool)
+            ):
                 continue
             lo, hi = spans[key]
             norm = 0.5 if hi == lo else (v - lo) / (hi - lo)
@@ -97,14 +104,21 @@ def _flat_rows(session: Session, limit: int) -> list[dict]:
     )
     exps = {e.id: e for e in session.query(models.Experiment).all()}
     chan_by_exp: dict = {}
-    for c in session.query(models.TargetChannel).all():
+    # ORDER BY id everywhere: result order is undefined otherwise on
+    # Postgres, and 'first channel' must be deterministic across refreshes.
+    for c in session.query(models.TargetChannel).order_by(
+        models.TargetChannel.id
+    ):
         chan_by_exp.setdefault(c.experiment_id, c)
     anas_by_run: dict = {}
     for a in session.query(models.AnalysisRun).order_by(models.AnalysisRun.id):
         anas_by_run.setdefault(a.acquisition_run_id, []).append(a)
     metrics_by_ana = {}
     for m in session.query(models.Metrics).order_by(models.Metrics.id):
-        metrics_by_ana.setdefault(m.analysis_run_id, m)
+        # plain assignment keeps the NEWEST row (ULIDs sort by creation):
+        # in an append-only store a corrected metrics row is appended, and
+        # the dashboard must show the correction, not the stale original.
+        metrics_by_ana[m.analysis_run_id] = m
 
     rows = []
     for run in runs:
