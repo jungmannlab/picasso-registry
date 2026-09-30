@@ -20,7 +20,23 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
   pipeline-recomputed (WP-7) ones, the source qc.json linked as an `artifact`
   (sha256), and **no taxonomy guessing** — the raw `sample` block is kept
   verbatim in `experiment.extra` for a later curated descriptor mapping.
-  Idempotent file-level sweep: `--dry-run`, per-file failure isolation.
+  Idempotent file-level sweep: `--dry-run`, per-file failure isolation, and
+  `--data-source acquired|simulated` to stamp A15 provenance at ingest.
+- **WP-REG-SIM (A15 / C24): `acquisition_run.data_source` + `sim_params`.**
+  Closed-vocabulary acquired-vs-simulated provenance (`"acquired" |
+  "simulated"`, validated at the schema layer; NULL on legacy rows =
+  unknown) plus the generator's ground-truth/settings JSON. Sims share the
+  real run_id (ULID) namespace and are distinguished only by this flag, so
+  it must be set at ingest (append-only — no retrofitting); learned
+  cohort-range consumers exclude `simulated` by default. Additive Alembic
+  migration `0004`; `openapi.json` regenerated.
+- **README: systemd deployment guide** (production bare-metal via conda/venv):
+  pinned tag install, unit file with `WorkingDirectory` = checkout (alembic) +
+  `Environment=PAINT_REGISTRY_URL` (absolute DB path, shared by migration and
+  service) + tokens via `--env-file` (keeps `systemctl reload` live token
+  reload working — an `EnvironmentFile=` would disable it by precedence),
+  upgrade procedure, and the field-seen pitfalls (CHDIR, alembic path, env
+  file location, relative SQLite URLs, DB backup).
 
 ## [0.2.0] - 2026-09-28
 
