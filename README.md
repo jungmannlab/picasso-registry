@@ -312,13 +312,22 @@ acquisition parameters and final metrics per measurement position:
 
 ```bash
 export PAINT_REGISTRY_TOKEN=…          # write-scope token (omit on loopback)
-picasso-registry-backfill-liveloc /pool/users --url http://registry:8000 --dry-run
-picasso-registry-backfill-liveloc /pool/users --url http://registry:8000
+picasso-registry-backfill-liveloc /pool/users --url http://registry:8000 \
+  --data-source acquired --dry-run     # preview; then drop --dry-run
+picasso-registry-backfill-liveloc /pool/users --url http://registry:8000 \
+  --data-source acquired
+# simulation databanks MUST be stamped (A15/C24 — sims are default-excluded
+# from learned cohort ranges via this flag, and it cannot be retrofitted):
+picasso-registry-backfill-liveloc /pool/sim_runs --url http://registry:8000 \
+  --data-source simulated
 ```
 
 Idempotent and re-runnable: row ids are deterministic ULIDs from
-`created`+name+position (mount-independent), already-ingested measurements are
-skipped, and a broken file fails alone without aborting the sweep. Metrics land
+`created`+name+position (mount- and timezone-independent — naive timestamps
+are pinned to UTC for minting), already-ingested measurements are skipped
+(within one sweep, an identical duplicate copy skips quietly; same identity
+with *different* content fails loudly), and a broken file fails alone without
+aborting the sweep — but an unreachable/broken registry aborts it. Metrics land
 on the typed columns (`n_locs`, `nena_nm` = whole-FOV NeNA, `frc_nm`,
 `photons_median`, `density_locs_um2`, `sbr`); everything unmapped (zoom NeNA,
 specificity, per-batch series) is preserved in `extra`, the source file is
