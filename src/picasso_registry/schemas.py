@@ -19,6 +19,10 @@ from pydantic import BaseModel, ConfigDict, Field
 # only these three axes and the cohort match-depth selector are closed sets.
 Modality = Literal["TIRF", "HILO", "spinning_disk", "light_sheet"]  # axis 3
 DimensionalityValue = Literal["2D", "3D"]  # axis 3
+# A15 / C24: acquired-vs-simulated provenance (closed vocabulary). Sims share
+# the real run_id namespace and are distinguished ONLY by this flag, so it
+# must be set at ingest — the store is append-only, no retrofitting.
+DataSource = Literal["acquired", "simulated"]
 TargetClass = Literal[  # axis 2 target class (names stay open)
     "intracellular_protein", "membrane_protein", "glycan"
 ]
@@ -119,6 +123,11 @@ class AcquisitionRun(_ORMExtra):
     config_yaml: str | None = None
     raw_data_path: str | None = None
     raw_retained: bool | None = None
+    # A15 / C24: None on legacy rows reads as "unknown"; learned-cohort
+    # consumers exclude data_source == "simulated" by default. sim_params
+    # carries the generator's ground-truth/settings for known-answer tests.
+    data_source: DataSource | None = None
+    sim_params: dict | None = None
     extra: dict | None = None
 
 

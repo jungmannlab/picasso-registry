@@ -145,6 +145,10 @@ class AcquisitionRun(Base):
     config_yaml: Mapped[str | None] = mapped_column(String)
     raw_data_path: Mapped[str | None] = mapped_column(String)
     raw_retained: Mapped[bool | None] = mapped_column(Boolean)
+    # A15 / C24: 'acquired' | 'simulated' (closed enum at the schema layer);
+    # NULL on legacy rows = unknown. Set at ingest — append-only, no updates.
+    data_source: Mapped[str | None] = mapped_column(String)
+    sim_params: Mapped[dict | None] = mapped_column(JSON)
     extra: Mapped[dict | None] = mapped_column(JSON)
 
 

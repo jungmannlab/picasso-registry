@@ -10,6 +10,14 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 ## [Unreleased]
 
 ### Added
+- **WP-REG-SIM (A15 / C24): `acquisition_run.data_source` + `sim_params`.**
+  Closed-vocabulary acquired-vs-simulated provenance (`"acquired" |
+  "simulated"`, validated at the schema layer; NULL on legacy rows =
+  unknown) plus the generator's ground-truth/settings JSON. Sims share the
+  real run_id (ULID) namespace and are distinguished only by this flag, so
+  it must be set at ingest (append-only — no retrofitting); learned
+  cohort-range consumers exclude `simulated` by default. Additive Alembic
+  migration `0004`; `openapi.json` regenerated.
 - **README: systemd deployment guide** (production bare-metal via conda/venv):
   pinned tag install, unit file with `WorkingDirectory` = checkout (alembic) +
   `Environment=PAINT_REGISTRY_URL` (absolute DB path, shared by migration and
