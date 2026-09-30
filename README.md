@@ -338,6 +338,32 @@ ones. The free-text `sample` block is kept verbatim in `experiment.extra` —
 the descriptor-taxonomy mapping is a later, curated step (see the module
 docstring in `picasso_registry/backfill_liveloc.py`).
 
+## Dashboard (browse / compare / rank)
+
+`GET /dashboard` serves the **WP-DASH read layer** — a self-contained web page
+over the registry, modelled on the lab's `Databank_Dashboard` prototype and
+monet's dashboard topology: the HTML shell is public (it contains no data),
+and every data fetch needs a lab-wide **read** token, pasted once into the
+login overlay and kept in the browser's localStorage (401 re-opens the
+prompt).
+
+```bash
+picasso-registry token add --scope read --label lab-dashboard \
+  --env-file /etc/picasso-registry/registry.env
+# then open  http://registry-host:8000/dashboard  and paste the token
+```
+
+Three views over the flat read model (`GET /dashboard/api/measurements`, one
+row per acquisition run — a derived query cache, not a second source of
+truth): a filterable/sortable **measurements table** (with CSV export), the
+template's **composite quality ranking** (FRC↓ NeNA↓ specificity↑ SBR↑,
+min-max-normalized over the filtered set and averaged; throughput slopes
+deliberately excluded), and a **compare** scatter (any numeric column vs any
+other, colored by tag — e.g. NeNA vs imager concentration colored by laser
+power). Simulated runs (`data_source`, A15) are badged and filterable.
+Comparison plots use Plotly from its CDN; the table and ranking work without
+internet access.
+
 ## The contract
 
 - **Schema** — SQLAlchemy models (`models.py`) mirror design-doc Part VI

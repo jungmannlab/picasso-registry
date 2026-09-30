@@ -404,6 +404,12 @@ def create_app(auth: AuthConfig | None = None) -> FastAPI:
     for name, schema, orm_cls, persist_fn in REGISTRY:
         _register_crud(app, name, schema, orm_cls, persist_fn)
 
+    # WP-DASH read layer: the public HTML shell + the read-scoped flat
+    # read-model endpoint (see picasso_registry.dashboard).
+    from .dashboard import router as dashboard_router
+
+    app.include_router(dashboard_router)
+
     return app
 
 

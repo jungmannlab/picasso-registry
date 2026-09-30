@@ -156,10 +156,12 @@ def test_mock_client_can_authenticate():
 
 
 # ── contract: every route is protected (table-driven, no silent gap) ─────────
-# /health is the one deliberate public route (liveness probe); every other
-# operation must declare a scope. Exempting it explicitly keeps the "no route
+# /health (liveness probe) and /dashboard (the WP-DASH HTML shell — static
+# presentation, zero data; every data fetch it makes hits the read-scoped
+# /dashboard/api/*) are the deliberate public routes; every other operation
+# must declare a scope. Exempting them explicitly keeps the "no route
 # silently unprotected" guarantee: a new unguarded route still fails this test.
-_PUBLIC = {"/health"}
+_PUBLIC = {"/health", "/dashboard"}
 
 
 def test_every_data_route_declares_a_scope():

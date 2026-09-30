@@ -9,6 +9,21 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Added
+- **WP-DASH: browse / compare / rank dashboard** (`picasso_registry.dashboard`,
+  served at `GET /dashboard`). monet's tokenized-web-dashboard topology
+  (public HTML shell, localStorage read token, 401 → login overlay) over the
+  `Databank_Dashboard` template's views: filterable/sortable measurements
+  table + CSV export, the composite quality ranking (FRC↓ NeNA↓ specificity↑
+  SBR↑ min-max-normalized, direction-aware, slopes excluded — unit-tested
+  against the template's ordering), and a Plotly compare scatter (X/Y/color
+  from any columns). Data comes from the new read-scoped
+  `GET /dashboard/api/measurements` — a derived flat read model (one row per
+  acquisition run joining experiment/channel/analysis/metrics incl.
+  `data_source` and `quality_score`), a query cache, not a second source of
+  truth. `/dashboard` joins `/health` as the only deliberately public routes
+  (asserted by the route-coverage test); `openapi.json` regenerated.
+
 ## [0.3.0] - 2026-09-30
 
 ### Added

@@ -71,6 +71,10 @@ fallback_version = "0.0.1.dev0"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# the WP-DASH dashboard shell, served by GET /dashboard
+picasso_registry = ["dashboard.html"]
+
 [tool.black]
 target-version = ["py310"]
 line-length = 79
