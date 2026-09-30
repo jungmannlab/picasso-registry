@@ -304,6 +304,40 @@ See **Resilient client** below for the delivery/idempotency guarantees.
   (append-only is preserved). Set `attempt` (with `acquisition_run_id` + `kind`)
   on analysis runs to make their retries idempotent.
 
+## Backfill: LiveLocalization qc.json history
+
+`picasso-registry-backfill-liveloc` (in the `[client]` extra) ingests the
+V0.7/V0.8 LiveLocalization `*_qc.json` archive — identity, sample metadata,
+acquisition parameters and final metrics per measurement position:
+
+```bash
+export PAINT_REGISTRY_TOKEN=…          # write-scope token (omit on loopback)
+picasso-registry-backfill-liveloc /pool/users --url http://registry:8000 \
+  --data-source acquired --dry-run     # preview; then drop --dry-run
+picasso-registry-backfill-liveloc /pool/users --url http://registry:8000 \
+  --data-source acquired
+# simulation databanks MUST be stamped (A15/C24 — sims are default-excluded
+# from learned cohort ranges via this flag, and it cannot be retrofitted):
+picasso-registry-backfill-liveloc /pool/sim_runs --url http://registry:8000 \
+  --data-source simulated
+```
+
+Idempotent and re-runnable: row ids are deterministic ULIDs from
+`created`+name+position (mount- and timezone-independent — naive timestamps
+are pinned to UTC for minting), already-ingested measurements are skipped
+(within one sweep, an identical duplicate copy skips quietly; same identity
+with *different* content fails loudly), and a broken file fails alone without
+aborting the sweep — but an unreachable/broken registry aborts it. Metrics land
+on the typed columns (`n_locs`, `nena_nm` = whole-FOV NeNA, `frc_nm`,
+`photons_median`, `density_locs_um2`, `sbr`); everything unmapped (zoom NeNA,
+specificity, per-batch series) is preserved in `extra`, the source file is
+linked as an `artifact` (sha256), and rows carry
+`analysis_run.kind="liveloc-qc"` + the tool's `software_version` so
+tool-computed metrics stay distinguishable from pipeline-recomputed (WP-7)
+ones. The free-text `sample` block is kept verbatim in `experiment.extra` —
+the descriptor-taxonomy mapping is a later, curated step (see the module
+docstring in `picasso_registry/backfill_liveloc.py`).
+
 ## The contract
 
 - **Schema** — SQLAlchemy models (`models.py`) mirror design-doc Part VI

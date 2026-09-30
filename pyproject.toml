@@ -62,6 +62,7 @@ dev = [
 [project.scripts]
 picasso-registry = "picasso_registry.cli:main"
 picasso-registry-export-openapi = "picasso_registry.export_openapi:main"
+picasso-registry-backfill-liveloc = "picasso_registry.backfill_liveloc:main"
 
 [tool.setuptools_scm]
 write_to = "src/picasso_registry/_version.py"

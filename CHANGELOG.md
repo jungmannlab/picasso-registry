@@ -10,6 +10,18 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 ## [Unreleased]
 
 ### Added
+- **`picasso-registry-backfill-liveloc`** (`picasso_registry.backfill_liveloc`,
+  `[client]` extra): backfill LiveLocalization V0.7/V0.8 `*_qc.json` files
+  into the registry via `/bulk`. Deterministic ULIDs from
+  `created`+name+position (mount-independent, so re-runs and copies dedupe),
+  metric keys renamed onto the typed columns with everything unmapped
+  preserved in `extra`, rows marked `analysis_run.kind="liveloc-qc"` +
+  `software_version` so tool-computed metrics stay distinguishable from
+  pipeline-recomputed (WP-7) ones, the source qc.json linked as an `artifact`
+  (sha256), and **no taxonomy guessing** — the raw `sample` block is kept
+  verbatim in `experiment.extra` for a later curated descriptor mapping.
+  Idempotent file-level sweep: `--dry-run`, per-file failure isolation, and
+  `--data-source acquired|simulated` to stamp A15 provenance at ingest.
 - **WP-REG-SIM (A15 / C24): `acquisition_run.data_source` + `sim_params`.**
   Closed-vocabulary acquired-vs-simulated provenance (`"acquired" |
   "simulated"`, validated at the schema layer; NULL on legacy rows =
