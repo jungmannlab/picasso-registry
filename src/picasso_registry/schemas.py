@@ -336,6 +336,9 @@ class CohortItem(BaseModel):
     """One ranked cohort member (closest tree-distance first)."""
 
     acquisition_run_id: str
+    # A15 / C24, carried so learned-range consumers can drop simulated (and,
+    # per policy, NULL=unknown) members without an N+1 per-run lookup.
+    data_source: DataSource | None = None
     experiment_id: str
     taxon_id: str
     taxon_name: str | None = None

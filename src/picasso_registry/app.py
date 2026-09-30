@@ -257,6 +257,7 @@ def create_app(auth: AuthConfig | None = None) -> FastAPI:
         query = (
             session.query(
                 models.AcquisitionRun.id,
+                models.AcquisitionRun.data_source,
                 models.Experiment.id,
                 models.SampleTaxonomy.id,
                 models.SampleTaxonomy.name,
@@ -321,12 +322,20 @@ def create_app(auth: AuthConfig | None = None) -> FastAPI:
         items = [
             schemas.CohortItem(
                 acquisition_run_id=run_id,
+                data_source=data_source,
                 experiment_id=exp_id,
                 taxon_id=tax_id,
                 taxon_name=tax_name,
                 tree_distance=tree_distance(node.path, tax_path),
             )
-            for run_id, exp_id, tax_id, tax_name, tax_path in query.all()
+            for (
+                run_id,
+                data_source,
+                exp_id,
+                tax_id,
+                tax_name,
+                tax_path,
+            ) in query.all()
         ]
         if max_distance is not None:
             items = [it for it in items if it.tree_distance <= max_distance]
