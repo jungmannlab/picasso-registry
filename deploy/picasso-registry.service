@@ -1,0 +1,56 @@
+# picasso-registry — systemd unit template (monet-parity deployment).
+#
+# Prefer the scripted install, which writes this unit with your paths filled
+# in and creates the service user:   sudo bash deploy/setup-server.sh
+# Copy by hand only if you must:  /etc/systemd/system/picasso-registry.service
+# then: sudo systemctl daemon-reload && sudo systemctl enable --now picasso-registry
+#
+# Never point ExecStart/ExecStartPre at an interpreter or checkout under
+# /root: ProtectHome=true hides /root from the service (the classic
+# "worked as root in a terminal, fails as a service" trap).
+
+[Unit]
+Description=picasso-registry provenance/metrics service
+Documentation=https://github.com/jungmannlab/picasso-registry
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Dedicated system account owning /opt/picasso-registry + /var/lib/picasso-registry
+# (created by deploy/setup-server.sh).
+User=registry
+Group=registry
+
+# The source checkout: alembic resolves alembic.ini + alembic/ relative to
+# the working directory. Nothing is written here (PYTHONDONTWRITEBYTECODE).
+WorkingDirectory=/opt/picasso-registry/src
+Environment=HOME=/var/lib/picasso-registry
+Environment=PYTHONDONTWRITEBYTECODE=1
+# Absolute DB path (sqlite://// = absolute), seen by BOTH the migration and
+# the service — the two must never disagree.
+Environment=PAINT_REGISTRY_URL=sqlite:////var/lib/picasso-registry/picasso_registry.db
+
+# Migrations first (idempotent once at head; Alembic owns the schema).
+ExecStartPre=/opt/picasso-registry/.venv/bin/alembic upgrade head
+# Tokens via --env-file (NOT a systemd EnvironmentFile=): only then does
+# `systemctl reload picasso-registry` (SIGHUP) apply token add/rotate/revoke
+# live — an EnvironmentFile would pin the map in the process env, which by
+# the documented process-env-wins precedence disables the live reload.
+ExecStart=/opt/picasso-registry/.venv/bin/picasso-registry \
+    --host 0.0.0.0 --port 8000 \
+    --env-file /etc/picasso-registry/registry.env
+ExecReload=/bin/kill -HUP $MAINPID
+
+Restart=on-failure
+RestartSec=2
+
+# Hardening (mirrors monet's unit).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/picasso-registry
+
+[Install]
+WantedBy=multi-user.target

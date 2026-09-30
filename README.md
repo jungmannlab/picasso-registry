@@ -62,104 +62,61 @@ picasso-registry --reload                       # dev auto-reload
 > host with no tokens (see Authentication below, `CLAUDE.md`, and
 > `docs/adr/001-service-authentication.md`).
 
-### systemd service (production bare-metal, conda/venv)
+### systemd service (production, scripted — monet parity)
 
-The tested production setup for a non-container host: a pinned install in a
-conda env (or venv) run as a systemd unit. A foreground `picasso-registry` in
-an SSH session dies with the session — systemd gives restart-on-failure, boot
-persistence, and a `reload` verb for live token changes.
-
-**1. Install pinned** (the tag is the version; never deploy an untagged HEAD):
+The supported production install mirrors monet's server deployment: a
+dedicated `registry` system user, a venv under `/opt/picasso-registry`, and a
+hardened systemd unit — **never `/root` paths** (`ProtectHome=true` hides
+`/root` from the service: the classic "worked in my root terminal, fails as a
+service" trap). One script does the whole install, and **re-running it is how
+you upgrade**:
 
 ```bash
-conda create -n picasso-registry python=3.10 -y
-conda run -n picasso-registry pip install \
-  "picasso-registry[server] @ git+https://github.com/jungmannlab/picasso-registry@v0.2.0"
-# alembic needs its config + migration scripts from a checkout of the SAME tag:
-git clone --branch v0.2.0 https://github.com/jungmannlab/picasso-registry \
-  ~/GitHub/picasso-registry
+sudo bash deploy/setup-server.sh                    # first install (main)
+sudo GIT_REF=v0.5.0 bash deploy/setup-server.sh     # pinned install / upgrade
 ```
 
-**2. One-time filesystem setup** — a home for the DB and one for the token
-store:
+It creates the user, clones/updates the source, builds the venv, installs
+`[server,client]`, runs `alembic upgrade head`, mints a first **write** token
+(hostname) plus a **read** token (`lab-dashboard`) if none exist, writes the
+unit (template: [`deploy/picasso-registry.service`](deploy/picasso-registry.service)),
+and starts the service. It **preserves** an existing DB and token file — and
+`chown`s them to the service user, which migrates a previous run-as-root
+deployment in place.
+
+**Where everything lives** (the `registry` user owns the lot):
+
+| Path | What it is |
+|------|-----------|
+| `/opt/picasso-registry/.venv/` | the venv the service runs from (`picasso-registry` also symlinked into `/usr/local/bin`) |
+| `/opt/picasso-registry/src/` | the source checkout (alembic config; the upgrade target) |
+| `/etc/picasso-registry/registry.env` | the token map (`PAINT_REGISTRY_TOKENS`, `0600`) |
+| `/var/lib/picasso-registry/picasso_registry.db` | the append-only database — **the one thing to back up** |
+| `/etc/systemd/system/picasso-registry.service` | the unit |
+
+**Day-2 operations:**
 
 ```bash
-mkdir -p /var/lib/picasso-registry /etc/picasso-registry
-# mint the token map straight into its production location:
-picasso-registry token add --scope write --label microscope-mercury \
+# tokens (live-applied via SIGHUP — tokens ride --env-file, not EnvironmentFile=):
+sudo -u registry picasso-registry token add --scope write --label microscope-mercury \
   --env-file /etc/picasso-registry/registry.env
-chmod 600 /etc/picasso-registry/registry.env   # token add sets this already
-```
+sudo systemctl reload picasso-registry
 
-**3. The unit** — `/etc/systemd/system/picasso-registry.service` (adjust the
-env path and checkout location):
+# upgrade to a tag (migrations run automatically via ExecStartPre):
+sudo GIT_REF=vX.Y.Z bash deploy/setup-server.sh
 
-```ini
-[Unit]
-Description=picasso-registry provenance/metrics service
-After=network-online.target
-
-[Service]
-# The checkout: alembic.ini + alembic/ must resolve from the working dir.
-# (systemd fails with status=200/CHDIR if this directory doesn't exist.)
-WorkingDirectory=/root/GitHub/picasso-registry
-# Absolute DB path (sqlite://// = absolute) so the DB never lands in the
-# checkout; Environment= is seen by BOTH the migration and the service.
-Environment=PAINT_REGISTRY_URL=sqlite:////var/lib/picasso-registry/picasso_registry.db
-ExecStartPre=/root/miniconda3/envs/picasso-registry/bin/alembic upgrade head
-ExecStart=/root/miniconda3/envs/picasso-registry/bin/picasso-registry \
-    --host 0.0.0.0 --port 8000 --env-file /etc/picasso-registry/registry.env
-ExecReload=/bin/kill -HUP $MAINPID
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-systemctl daemon-reload && systemctl enable --now picasso-registry
-systemctl status picasso-registry          # expect: active (running)
+# health / logs
 curl -s http://127.0.0.1:8000/health
+journalctl -u picasso-registry -f
 ```
 
-**Why tokens go via `--env-file` and the DB URL via `Environment=`** (don't
-"simplify" to one systemd `EnvironmentFile=` for both): if systemd injected
-`PAINT_REGISTRY_TOKENS` into the process environment, the service would treat
-the *environment* as the token source and SIGHUP would — by the documented
-process-env-wins precedence — stop re-reading the file, killing live reload.
-With the map only in the `--env-file`, token changes apply without downtime:
-
-```bash
-picasso-registry token rotate --label microscope-mercury \
-  --env-file /etc/picasso-registry/registry.env
-systemctl reload picasso-registry          # SIGHUP → re-reads the token map
-```
-
-The DB URL, by contrast, is startup-owned and static — and `ExecStartPre`'s
-`alembic upgrade head` must see the *same* URL it migrates, which only
-`Environment=` provides to both processes.
-
-**Upgrades:** `git -C ~/GitHub/picasso-registry fetch --tags && git -C
-~/GitHub/picasso-registry checkout vX.Y.Z`, pip-install the same tag into the
-env, then `systemctl restart picasso-registry` (the `ExecStartPre` migration
-brings the schema to head; additive migrations are the norm here).
-
-**Pitfalls seen in the field:**
-- `status=200/CHDIR` at start ⇒ `WorkingDirectory` doesn't exist.
-- `FAILED: Path doesn't exist: alembic` ⇒ the working dir isn't a checkout
-  (alembic resolves `alembic.ini`/`alembic/` relative to it).
-- `env file not found` ⇒ `picasso-registry token add` wrote `./.env` in
-  whatever directory it ran in; mint with (or move it to) the `--env-file`
-  path the unit references.
-- Prefer `sqlite:////abs/path.db` (four slashes) — a relative
-  `sqlite:///./…` puts the DB inside the checkout.
-- **Back up the DB file** (`/var/lib/picasso-registry/`): the registry is the
-  append-only source of truth; the checkout and env are re-creatable, the DB
-  is not.
-
-Runs as root above for brevity; the tidier end state is a dedicated system
-user (`useradd -r registry`, `chown` the two directories, `User=registry` in
-the unit) once the service is proven on the host.
+Why tokens go via `--env-file` while the DB URL is a unit `Environment=`: an
+`EnvironmentFile=` would inject `PAINT_REGISTRY_TOKENS` into the process env,
+and by the documented process-env-wins precedence SIGHUP would stop re-reading
+the file — killing live token reload. The DB URL, in contrast, must be seen
+identically by the `ExecStartPre` migration and the service, which only
+`Environment=` gives both. Prefer `sqlite:////abs/path.db` (four slashes);
+back up the DB file — everything else is re-creatable.
 
 ### Authentication (scoped bearer tokens)
 
