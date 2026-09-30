@@ -98,13 +98,19 @@ class SkipFile(Exception):
 
 
 def map_qc(
-    payload: dict, source: str, raw: bytes | None = None
+    payload: dict,
+    source: str,
+    raw: bytes | None = None,
+    data_source: str | None = None,
 ) -> dict[str, list[dict]]:
     """Map one parsed qc.json onto registry /bulk tables (pure function).
 
     ``raw`` is the file's byte content for the artifact checksum/size; when
     omitted (e.g. mapping an already-parsed payload) the artifact row carries
-    only the URI.
+    only the URI. ``data_source`` stamps the A15/C24 acquired-vs-simulated
+    provenance flag — it MUST be "simulated" when ingesting a simulation
+    databank (append-only: the flag can't be retrofitted, and sims are
+    default-excluded from learned cohort ranges only through it).
     """
     measurement = payload.get("measurement") or {}
     sample = payload.get("sample") or {}
@@ -160,6 +166,7 @@ def map_qc(
         "microscope_id": measurement.get("microscope"),
         "started_at": created_raw,
         "status": "backfilled",
+        "data_source": data_source,
         "raw_data_path": measurement.get("folder"),
         "measurement": measurement,
         "acquisition": acquisition,
@@ -198,6 +205,10 @@ def map_qc(
         "db_anomalies": payload.get("db_anomalies"),
         "filter_suggestion": payload.get("filter_suggestion"),
         "dye_analysis": payload.get("dye_analysis"),
+        # V0.7-origami-backfill vintage: small per-run trend slopes and
+        # per-ROI summaries (the dense series stay in the artifact file).
+        "derived_slopes": payload.get("derived_slopes"),
+        "regions": payload.get("regions"),
     }
 
     metrics: dict[str, Any] = {
@@ -263,6 +274,7 @@ def ingest_paths(
     paths: list[str],
     *,
     dry_run: bool = False,
+    data_source: str | None = None,
     log=print,
 ) -> dict[str, int]:
     """Ingest every qc.json under ``paths``; returns counts. One file is one
@@ -273,7 +285,9 @@ def ingest_paths(
         try:
             raw = Path(path).read_bytes()
             payload = json.loads(raw)
-            tables = map_qc(payload, str(path), raw=raw)
+            tables = map_qc(
+                payload, str(path), raw=raw, data_source=data_source
+            )
         except SkipFile as exc:
             log(f"SKIP  {path}: {exc}")
             counts["skipped"] += 1
@@ -331,12 +345,27 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="map + report, POST nothing",
     )
+    parser.add_argument(
+        "--data-source",
+        choices=["acquired", "simulated"],
+        default=None,
+        help="A15/C24 provenance stamped on every ingested run. REQUIRED "
+        "knowledge, not guessable from the files: pass 'simulated' for a "
+        "simulation databank (sims are default-excluded from learned cohort "
+        "ranges via this flag, and it cannot be retrofitted — the store is "
+        "append-only). Omitted = recorded as unknown (NULL).",
+    )
     args = parser.parse_args(argv)
 
     from .client import RegistryClient
 
     client = RegistryClient(args.url, token=args.token)
-    counts = ingest_paths(client, args.paths, dry_run=args.dry_run)
+    counts = ingest_paths(
+        client,
+        args.paths,
+        dry_run=args.dry_run,
+        data_source=args.data_source,
+    )
     print(
         "backfill{}: {ingested} ingested, {skipped} skipped, "
         "{failed} failed".format(

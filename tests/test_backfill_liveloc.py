@@ -143,6 +143,17 @@ def test_ingest_round_trip_and_idempotency(qc_file, capsys):
         assert len(reg.list("metrics")) == 1
 
 
+def test_data_source_flag_stamps_a15_provenance(qc_file):
+    """--data-source simulated must land on the typed acquisition_run column
+    (A15/C24) — append-only, so it has to be right at ingest."""
+    with mock_registry() as reg:
+        ingest_paths(
+            reg, [str(qc_file)], data_source="simulated", log=lambda *_: None
+        )
+        (run,) = reg.list("acquisition_run")
+        assert run["data_source"] == "simulated"
+
+
 def test_directory_sweep_dry_run_posts_nothing(tmp_path):
     for pos in ("1", "2"):
         qc = dict(QC, measurement=dict(QC["measurement"], position_label=pos))
