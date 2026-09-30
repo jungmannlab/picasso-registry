@@ -112,6 +112,8 @@ def test_dashboard_shell_is_public_but_data_needs_read_token():
     page = reg.client.get("/dashboard")
     assert page.status_code == 200
     assert "registry_dashboard_token" in page.text  # the login flow is there
+    assert 'id="version"' in page.text  # service version shown (from /health)
+    assert "resetFilters" in page.text  # sidebar filter controls present
     assert reg.client.get("/dashboard/api/measurements").status_code == 401
     ok = reg.client.get(
         "/dashboard/api/measurements",
