@@ -9,6 +9,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-30
+
 ### Added
 - **`picasso-registry-backfill-liveloc`** (`picasso_registry.backfill_liveloc`,
   `[client]` extra): backfill LiveLocalization V0.7/V0.8 `*_qc.json` files
