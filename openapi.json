@@ -15,6 +15,21 @@
             ],
             "title": "Config Yaml"
           },
+          "data_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "acquired",
+                  "simulated"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Source"
+          },
           "experiment_id": {
             "anyOf": [
               {
@@ -109,6 +124,18 @@
               }
             ],
             "title": "Raw Retained"
+          },
+          "sim_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sim Params"
           },
           "started_at": {
             "anyOf": [
@@ -578,6 +605,21 @@
           "acquisition_run_id": {
             "title": "Acquisition Run Id",
             "type": "string"
+          },
+          "data_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "acquired",
+                  "simulated"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Source"
           },
           "experiment_id": {
             "title": "Experiment Id",
