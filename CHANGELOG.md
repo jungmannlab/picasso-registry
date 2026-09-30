@@ -9,6 +9,16 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Fixed
+- **deploy/setup-server.sh: upgrades now actually restart the service.** The
+  stop step was gated on a `list-unit-files | grep -q` pipeline that can fail
+  spuriously under `pipefail` (grep -q SIGPIPEs systemctl), and the final
+  `systemctl enable --now` is a no-op `start` on an already-running unit — a
+  re-run could leave the OLD process serving the new unit file (observed in
+  the field: v0.4.0 kept serving after a v0.6.0 install). The stop is now
+  unconditional, the start is `systemctl restart`, and the script verifies
+  the serving PID's executable lives in the freshly installed venv.
+
 ## [0.6.0] - 2026-09-30
 
 ### Changed
