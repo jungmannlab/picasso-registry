@@ -9,6 +9,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-30
+
 ### Added
 - **WP-DASH: browse / compare / rank dashboard** (`picasso_registry.dashboard`,
   served at `GET /dashboard`). monet's tokenized-web-dashboard topology
