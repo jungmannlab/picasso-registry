@@ -9,6 +9,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-30
+
 ### Changed
 - **Dashboard: inactive filters stay visible.** Filter controls whose column
   is uniform (or absent) in the loaded data are no longer hidden — they are
