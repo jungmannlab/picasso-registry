@@ -9,6 +9,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-30
+
 ### Added
 - **Dashboard sidebar filters + service version.** The left bar now offers,
   besides the auto-built categorical selects, **numeric min/max range
