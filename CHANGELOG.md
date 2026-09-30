@@ -10,6 +10,17 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 ## [Unreleased]
 
 ### Added
+- **Scripted monet-parity deployment** (`deploy/setup-server.sh` +
+  `deploy/picasso-registry.service`): dedicated `registry` system user, venv
+  under `/opt/picasso-registry`, source checkout owned by the service user
+  (no git dubious-ownership, setuptools-scm versions correctly), hardened
+  unit (`ProtectSystem=strict`, `ProtectHome=true` — no `/root` paths), DB
+  under `/var/lib/picasso-registry`, tokens via `--env-file` so
+  `systemctl reload` live-applies token changes, `alembic upgrade head` as
+  `ExecStartPre`. Re-running the script IS the upgrade path (`GIT_REF=vX.Y.Z`);
+  it preserves an existing DB + token file and chowns them off root,
+  migrating a run-as-root deployment in place. README deploy section
+  rewritten around it.
 - **Dashboard sidebar filters + service version.** The left bar now offers,
   besides the auto-built categorical selects, **numeric min/max range
   filters** for every numeric column that varies in the loaded data (the
