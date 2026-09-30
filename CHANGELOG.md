@@ -9,6 +9,15 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Added
+- **Dashboard sidebar filters + service version.** The left bar now offers,
+  besides the auto-built categorical selects, **numeric min/max range
+  filters** for every numeric column that varies in the loaded data (the
+  sweep axes conc/power/exposure and the quality metrics), a **date range**
+  on `started_at`, and a **reset-filters** button. The header shows the
+  running registry version (fetched from the public `/health`). No contract
+  change.
+
 ## [0.4.0] - 2026-09-30
 
 ### Added

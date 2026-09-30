@@ -67,7 +67,8 @@
 </head>
 <body>
 <header>
-  <h1>picasso-registry</h1>
+  <h1>picasso-registry <span id="version" style="color:var(--mut);
+      font-weight:normal;font-size:12px"></span></h1>
   <span class="stats" id="stats">–</span>
   <div class="right">
     <button onclick="loadData()">⟳ refresh</button>
@@ -91,8 +92,13 @@
 </div>
 
 <div class="layout">
-  <aside id="filters"><label>search name</label>
+  <aside id="filters">
+    <button onclick="resetFilters()" style="width:100%">reset filters</button>
+    <label>search name</label>
     <input id="q" placeholder="substring…" oninput="render()">
+    <label>date from / to</label>
+    <input id="d0" type="date" onchange="render()">
+    <input id="d1" type="date" onchange="render()" style="margin-top:3px">
   </aside>
   <main>
     <nav class="tabs">
@@ -179,6 +185,7 @@ function esc(v){
 function buildFilters(){
   const aside = document.getElementById("filters");
   aside.querySelectorAll(".dyn").forEach(e => e.remove());
+  // categorical: one select per tag column that actually varies
   for (const col of FILTER_COLS){
     const vals = [...new Set(ROWS.map(r => r[col] ?? "∅"))].sort();
     if (vals.length < 2) continue;
@@ -190,15 +197,61 @@ function buildFilters(){
       `<option>${esc(v)}</option>`).join("");
     aside.append(lab, sel);
   }
+  // numeric ranges: min/max per numeric column that actually varies —
+  // the sweep axes (conc/power/exposure) and the quality metrics
+  for (const col of NUM_COLS){
+    const vals = [...new Set(ROWS.map(r => r[col])
+      .filter(v => typeof v === "number"))];
+    if (vals.length < 2) continue;
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const lab = document.createElement("label");
+    lab.textContent = `${col} (${fmt(lo)} – ${fmt(hi)})`;
+    lab.className = "dyn";
+    const box = document.createElement("div");
+    box.className = "dyn"; box.style.display = "flex"; box.style.gap = "4px";
+    for (const [end, ph] of [["lo","min"],["hi","max"]]){
+      const inp = document.createElement("input");
+      inp.id = `n_${col}_${end}`; inp.type = "number"; inp.step = "any";
+      inp.placeholder = ph; inp.oninput = render;
+      box.append(inp);
+    }
+    aside.append(lab, box);
+  }
+}
+
+function resetFilters(){
+  document.getElementById("q").value = "";
+  document.getElementById("d0").value = "";
+  document.getElementById("d1").value = "";
+  document.querySelectorAll("#filters select.dyn")
+    .forEach(s => s.value = "");
+  document.querySelectorAll("#filters div.dyn input")
+    .forEach(i => i.value = "");
+  render();
 }
 
 function filtered(){
   const q = document.getElementById("q").value.toLowerCase();
+  const d0 = document.getElementById("d0").value;   // YYYY-MM-DD
+  const d1 = document.getElementById("d1").value;
   return ROWS.filter(r => {
     if (q && !String(r.name||"").toLowerCase().includes(q)) return false;
+    const day = String(r.started_at || "").slice(0, 10);
+    if (d0 && (!day || day < d0)) return false;
+    if (d1 && (!day || day > d1)) return false;
     for (const col of FILTER_COLS){
       const sel = document.getElementById("f_" + col);
       if (sel && sel.value && String(r[col] ?? "∅") !== sel.value) return false;
+    }
+    for (const col of NUM_COLS){
+      const lo = document.getElementById(`n_${col}_lo`);
+      const hi = document.getElementById(`n_${col}_hi`);
+      if (!lo && !hi) continue;
+      const v = r[col];
+      if (lo && lo.value !== "" &&
+          !(typeof v === "number" && v >= Number(lo.value))) return false;
+      if (hi && hi.value !== "" &&
+          !(typeof v === "number" && v <= Number(hi.value))) return false;
     }
     return true;
   });
@@ -337,6 +390,11 @@ function exportCsv(){
   a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"}));
   a.download = "registry_measurements.csv"; a.click();
 }
+
+// service version in the header — /health is public, works pre-login
+fetch("health").then(r => r.json()).then(d => {
+  document.getElementById("version").textContent = "v" + d.version;
+}).catch(() => {});
 
 if (!AUTH.token) showLogin(); else loadData();
 </script>
