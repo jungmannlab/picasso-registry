@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>picasso-registry · dashboard</title>
+<!-- pinned + SRI: a compromised CDN must not execute in a page holding the
+     read token; on integrity failure the Compare tab degrades gracefully -->
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"
+  integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7"
+  crossorigin="anonymous"></script>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1c2430; --mut:#68707c;
+          --line:#e3e6ea; --acc:#2563eb; --sim:#b45309; --acq:#047857; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 -apple-system,"Segoe UI",Roboto,sans-serif;
+         color:var(--ink); background:var(--bg); }
+  header { display:flex; align-items:baseline; gap:14px; padding:10px 18px;
+           background:var(--card); border-bottom:1px solid var(--line); }
+  header h1 { font-size:16px; margin:0; }
+  header .stats { color:var(--mut); font-size:12.5px; }
+  header .right { margin-left:auto; display:flex; gap:10px; }
+  button, select, input { font:inherit; }
+  button { padding:4px 10px; border:1px solid var(--line); background:#fff;
+           border-radius:6px; cursor:pointer; }
+  button:hover { border-color:var(--acc); }
+  .layout { display:flex; min-height:calc(100vh - 46px); }
+  aside { width:230px; padding:12px; border-right:1px solid var(--line);
+          background:var(--card); }
+  aside label { display:block; font-size:11.5px; color:var(--mut);
+                margin:8px 0 2px; text-transform:uppercase; }
+  aside select, aside input { width:100%; padding:4px 6px;
+                border:1px solid var(--line); border-radius:6px; }
+  main { flex:1; padding:14px 18px; overflow-x:auto; }
+  nav.tabs { display:flex; gap:6px; margin-bottom:12px; }
+  nav.tabs button.active { background:var(--acc); color:#fff;
+                border-color:var(--acc); }
+  table { border-collapse:collapse; width:100%; background:var(--card);
+          font-size:12.5px; }
+  th, td { padding:5px 8px; border-bottom:1px solid var(--line);
+           text-align:left; white-space:nowrap; }
+  th { cursor:pointer; user-select:none; position:sticky; top:0;
+       background:#eef1f5; }
+  tr:hover td { background:#f0f5ff; }
+  .badge { padding:1px 7px; border-radius:9px; font-size:11px; color:#fff; }
+  .badge.simulated { background:var(--sim); }
+  .badge.acquired  { background:var(--acq); }
+  .badge.unknown   { background:var(--mut); }
+  .rankrow { display:flex; align-items:center; gap:8px; margin:3px 0; }
+  .rankrow .bar { height:14px; background:var(--acc); border-radius:3px; }
+  .rankrow .lbl { width:340px; overflow:hidden; text-overflow:ellipsis;
+                  white-space:nowrap; font-size:12.5px; }
+  .winners { margin:10px 0; color:var(--mut); font-size:12.5px; }
+  .card { background:var(--card); border:1px solid var(--line);
+          border-radius:8px; padding:12px; margin-bottom:12px; }
+  #login { position:fixed; inset:0; background:rgba(20,26,34,.55);
+           display:flex; align-items:center; justify-content:center; }
+  #login .card { width:360px; }
+  #login input { width:100%; padding:6px 8px; margin:8px 0;
+                 border:1px solid var(--line); border-radius:6px; }
+  #loginmsg { color:#b91c1c; font-size:12.5px; min-height:16px; }
+  .hidden { display:none !important; }
+  .plotbox { height:480px; }
+  .controls { display:flex; gap:10px; margin-bottom:8px; flex-wrap:wrap; }
+  .controls label { font-size:12px; color:var(--mut); }
+</style>
+</head>
+<body>
+<header>
+  <h1>picasso-registry</h1>
+  <span class="stats" id="stats">–</span>
+  <div class="right">
+    <button onclick="loadData()">⟳ refresh</button>
+    <button onclick="exportCsv()">⤓ CSV</button>
+    <button onclick="signOut()">sign out</button>
+  </div>
+</header>
+
+<div id="login" class="hidden">
+  <div class="card">
+    <h3 style="margin-top:0">Registry read token</h3>
+    <p style="color:var(--mut);font-size:12.5px">This dashboard needs a
+      lab-wide <b>read</b> token (ask the registry admin, or on the server:
+      <code>picasso-registry token list</code>). Stored only in this
+      browser.</p>
+    <div id="loginmsg"></div>
+    <input id="tok" type="password" placeholder="paste token…"
+           onkeydown="if(event.key==='Enter')saveToken()">
+    <button onclick="saveToken()">Connect</button>
+  </div>
+</div>
+
+<div class="layout">
+  <aside id="filters"><label>search name</label>
+    <input id="q" placeholder="substring…" oninput="render()">
+  </aside>
+  <main>
+    <nav class="tabs">
+      <button id="tab-table" class="active" onclick="setTab('table')">Measurements</button>
+      <button id="tab-rank" onclick="setTab('rank')">Ranking</button>
+      <button id="tab-compare" onclick="setTab('compare')">Compare</button>
+    </nav>
+    <div id="view-table"></div>
+    <div id="view-rank" class="hidden"></div>
+    <div id="view-compare" class="hidden">
+      <div class="card">
+        <div class="controls">
+          <label>X <select id="cx" onchange="render()"></select></label>
+          <label>Y <select id="cy" onchange="render()"></select></label>
+          <label>color by <select id="cc" onchange="render()"></select></label>
+        </div>
+        <div id="plot" class="plotbox"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+"use strict";
+const TOKEN_KEY = "registry_dashboard_token";
+const AUTH = { token: localStorage.getItem(TOKEN_KEY) || "" };
+const FILTER_COLS = ["microscope","data_source","sample_type","dye","imager",
+                     "buffer","target","operator","analysis_kind"];
+const NUM_COLS = ["conc_pm","power_mw","exposure_ms","n_locs","nena_nm",
+                  "nena_zoom_nm","frc_nm","specificity","sbr","background",
+                  "photons_median","density_locs_um2","quality_score"];
+const TABLE_COLS = ["name","started_at","microscope","data_source","sample_type",
+  "target","dye","imager","conc_pm","power_mw","exposure_ms","n_locs",
+  "nena_nm","frc_nm","sbr","photons_median","density_locs_um2","quality_score"];
+// the template's quality set (compare_qc.py): FRC & NeNA lower-is-better
+const QUALITY = [["frc_nm",false],["nena_nm",false],["specificity",true],["sbr",true]];
+let ROWS = [], sortKey = "started_at", sortDir = -1, tab = "table";
+
+function showLogin(msg){ document.getElementById("loginmsg").textContent = msg||"";
+  document.getElementById("login").classList.remove("hidden");
+  document.getElementById("tok").focus(); }
+function saveToken(){ AUTH.token = document.getElementById("tok").value.trim();
+  localStorage.setItem(TOKEN_KEY, AUTH.token);
+  document.getElementById("login").classList.add("hidden"); loadData(); }
+function signOut(){ localStorage.removeItem(TOKEN_KEY); AUTH.token="";
+  showLogin("Signed out."); }
+
+async function authedFetch(url){
+  const h = {};
+  if (AUTH.token) h["Authorization"] = "Bearer " + AUTH.token;
+  const r = await fetch(url, {headers: h});
+  if (r.status === 401 || r.status === 403){
+    showLogin(r.status === 403 ? "Token lacks read scope." :
+      "This dashboard requires a token. Paste your registry read token.");
+    throw new Error("unauthorized");
+  }
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+async function loadData(){
+  try { ROWS = await authedFetch("dashboard/api/measurements"); }
+  catch(e){ if (e.message !== "unauthorized")
+    document.getElementById("stats").textContent = "load failed: "+e.message;
+    return; }
+  buildFilters(); buildSelectors(); render();
+}
+
+function fmt(v){
+  if (v === null || v === undefined) return "";
+  if (typeof v === "number") return Number.isInteger(v) ? v :
+    Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(v < 1 ? 3 : 2);
+  return String(v).replace("T"," ").slice(0, 40);
+}
+
+// HTML-escape EVERY data value interpolated into innerHTML: row values come
+// from ingested qc.json files — a hostile measurement name must render as
+// text, never execute (it could exfiltrate the localStorage token).
+function esc(v){
+  return String(v).replace(/[&<>"']/g, c => (
+    {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function buildFilters(){
+  const aside = document.getElementById("filters");
+  aside.querySelectorAll(".dyn").forEach(e => e.remove());
+  for (const col of FILTER_COLS){
+    const vals = [...new Set(ROWS.map(r => r[col] ?? "∅"))].sort();
+    if (vals.length < 2) continue;
+    const lab = document.createElement("label");
+    lab.textContent = col; lab.className = "dyn";
+    const sel = document.createElement("select");
+    sel.className = "dyn"; sel.id = "f_" + col; sel.onchange = render;
+    sel.innerHTML = '<option value="">all</option>' + vals.map(v =>
+      `<option>${esc(v)}</option>`).join("");
+    aside.append(lab, sel);
+  }
+}
+
+function filtered(){
+  const q = document.getElementById("q").value.toLowerCase();
+  return ROWS.filter(r => {
+    if (q && !String(r.name||"").toLowerCase().includes(q)) return false;
+    for (const col of FILTER_COLS){
+      const sel = document.getElementById("f_" + col);
+      if (sel && sel.value && String(r[col] ?? "∅") !== sel.value) return false;
+    }
+    return true;
+  });
+}
+
+// re-apply the template's composite recipe over the *filtered* subset
+function scoreSubset(rows){
+  const spans = {};
+  for (const [k] of QUALITY){
+    const v = rows.map(r => r[k]).filter(x => typeof x === "number");
+    if (v.length) spans[k] = [Math.min(...v), Math.max(...v)];
+  }
+  return rows.map(r => {
+    const parts = [];
+    for (const [k, hi] of QUALITY){
+      if (!(k in spans) || typeof r[k] !== "number") continue;
+      const [lo, up] = spans[k];
+      const n = up === lo ? 0.5 : (r[k] - lo) / (up - lo);
+      parts.push(hi ? n : 1 - n);
+    }
+    return parts.length ? parts.reduce((a,b)=>a+b,0)/parts.length : null;
+  });
+}
+
+function setTab(t){ tab = t;
+  for (const x of ["table","rank","compare"]){
+    document.getElementById("tab-"+x).classList.toggle("active", x===t);
+    document.getElementById("view-"+x).classList.toggle("hidden", x!==t);
+  } render(); }
+
+function render(){
+  const rows = filtered();
+  const nSim = rows.filter(r => r.data_source === "simulated").length;
+  document.getElementById("stats").textContent =
+    `${rows.length}/${ROWS.length} runs · ${nSim} simulated · ` +
+    `${rows.length - nSim} acquired/unknown`;
+  if (tab === "table") renderTable(rows);
+  if (tab === "rank") renderRank(rows);
+  if (tab === "compare") renderCompare(rows);
+}
+
+function renderTable(rows){
+  const sorted = [...rows].sort((a,b) => {
+    const x = a[sortKey], y = b[sortKey];
+    if (x == null) return 1; if (y == null) return -1;
+    return (x < y ? -1 : x > y ? 1 : 0) * sortDir;
+  });
+  const th = TABLE_COLS.map(c =>
+    `<th onclick="setSort('${c}')">${c}${c===sortKey?(sortDir>0?" ▲":" ▼"):""}</th>`
+  ).join("");
+  const body = sorted.map(r => "<tr>" + TABLE_COLS.map(c => {
+    if (c === "data_source"){
+      // class from a closed set only — never from data
+      const cls = ["simulated","acquired"].includes(r[c]) ? r[c] : "unknown";
+      return `<td><span class="badge ${cls}">${esc(r[c]||"?")}</span></td>`;
+    }
+    return `<td>${esc(fmt(r[c]))}</td>`;
+  }).join("") + "</tr>").join("");
+  document.getElementById("view-table").innerHTML =
+    `<div class="card" style="padding:0;overflow:auto;max-height:78vh">
+     <table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function setSort(c){ sortDir = (c === sortKey) ? -sortDir : -1; sortKey = c; render(); }
+
+function renderRank(rows){
+  const scores = scoreSubset(rows);
+  const ranked = rows.map((r,i) => [r, scores[i]])
+    .filter(([,s]) => s !== null).sort((a,b) => b[1]-a[1]);
+  const winners = QUALITY.map(([k, hi]) => {
+    const have = rows.filter(r => typeof r[k] === "number");
+    if (!have.length) return "";
+    const best = have.reduce((a,b) =>
+      (hi ? b[k] > a[k] : b[k] < a[k]) ? b : a);
+    return `<b>${hi?"highest":"lowest"} ${k}</b>: ${esc(best.name||best.run_id)} (${fmt(best[k])})`;
+  }).filter(Boolean).join(" · ");
+  const bars = ranked.slice(0, 40).map(([r,s], i) =>
+    `<div class="rankrow"><span class="lbl">${i===0?"★ ":""}${i+1}. ${esc(r.name||r.run_id)}</span>
+     <div class="bar" style="width:${Math.round(s*420)}px"></div>
+     <span>${s.toFixed(3)}</span></div>`).join("");
+  document.getElementById("view-rank").innerHTML =
+    `<div class="card"><h3 style="margin-top:0">Composite quality ranking
+      <span style="font-weight:normal;color:var(--mut);font-size:12px">
+      (FRC↓ NeNA↓ specificity↑ SBR↑, min-max-normalized over the filtered set,
+      averaged — slopes/throughput deliberately excluded)</span></h3>
+     <div class="winners">${winners}</div>${bars ||
+      "<i>no rows with quality metrics in the current filter</i>"}</div>`;
+}
+
+function buildSelectors(){
+  for (const [id, cols, dflt] of [["cx", NUM_COLS, "conc_pm"],
+      ["cy", NUM_COLS, "nena_nm"], ["cc", FILTER_COLS.concat("power_mw"), "power_mw"]]){
+    const sel = document.getElementById(id);
+    sel.innerHTML = cols.map(c => `<option${c===dflt?" selected":""}>${c}</option>`).join("");
+  }
+}
+
+function renderCompare(rows){
+  if (typeof Plotly === "undefined"){
+    document.getElementById("plot").innerHTML =
+      "<i>Plotly (CDN) unavailable — comparison plots need internet access "
+      + "on this browser; the table and ranking work offline.</i>";
+    return;
+  }
+  const cx = document.getElementById("cx").value,
+        cy = document.getElementById("cy").value,
+        cc = document.getElementById("cc").value;
+  const groups = {};
+  for (const r of rows){
+    if (r[cx] == null || r[cy] == null) continue;
+    const g = String(r[cc] ?? "∅");
+    (groups[g] = groups[g] || {x:[],y:[],t:[]});
+    groups[g].x.push(r[cx]); groups[g].y.push(r[cy]);
+    groups[g].t.push(r.name || r.run_id);
+  }
+  const traces = Object.entries(groups).map(([g,d]) => ({
+    x:d.x, y:d.y, text:d.t, name:g, mode:"markers", type:"scatter",
+    marker:{size:8, opacity:.75}}));
+  Plotly.newPlot("plot", traces,
+    {xaxis:{title:cx}, yaxis:{title:cy}, margin:{t:24},
+     legend:{title:{text:cc}}}, {responsive:true});
+}
+
+function exportCsv(){
+  const rows = filtered();
+  const cols = Object.keys(rows[0] || {});
+  // quote on \r too, and neutralize spreadsheet formula injection (=+-@
+  // prefixes execute when the export is opened in Excel/LibreOffice)
+  const cell = v => {
+    let s = v == null ? "" : String(v);
+    if (/^[=+\-@]/.test(s)) s = "'" + s;
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  };
+  const csv = [cols.join(",")].concat(
+    rows.map(r => cols.map(c => cell(r[c])).join(","))).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"}));
+  a.download = "registry_measurements.csv"; a.click();
+}
+
+if (!AUTH.token) showLogin(); else loadData();
+</script>
+</body>
+</html>

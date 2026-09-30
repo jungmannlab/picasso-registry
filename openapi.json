@@ -3591,6 +3591,82 @@
         ]
       }
     },
+    "/dashboard": {
+      "get": {
+        "description": "The public HTML shell (no data; every fetch needs a read token).",
+        "operationId": "dashboard_page_dashboard_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dashboard Page",
+        "tags": [
+          "dashboard"
+        ]
+      }
+    },
+    "/dashboard/api/measurements": {
+      "get": {
+        "description": "The flat read model: one row per acquisition run, ranking included.",
+        "operationId": "dashboard_measurements_dashboard_api_measurements_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10000,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Dashboard Measurements Dashboard Api Measurements Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dashboard Measurements",
+        "tags": [
+          "dashboard"
+        ]
+      }
+    },
     "/environment": {
       "get": {
         "operationId": "list_environment_environment_get",
