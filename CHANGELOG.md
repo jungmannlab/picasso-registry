@@ -9,6 +9,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-30
+
 ### Fixed
 - **deploy/setup-server.sh: upgrades now actually restart the service.** The
   stop step was gated on a `list-unit-files | grep -q` pipeline that can fail
