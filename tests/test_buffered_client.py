@@ -134,9 +134,12 @@ def test_caller_never_raises_or_blocks_when_down(tmp_path):
         start = time.monotonic()
         for i in range(50):
             reg.log_metrics(analysis_run_id=f"a{i}", nena_nm=3.0)
-        # 50 best-effort writes against a dead registry return effectively
-        # instantly — they only touch the local buffer.
-        assert time.monotonic() - start < 1.0
+        # 50 best-effort writes against a dead registry only touch the local
+        # buffer. The bound guards against SYNCHRONOUS network retries (which
+        # cost seconds per write, i.e. minutes for 50) — it is deliberately
+        # loose because shared CI runners stall for over a second under load,
+        # which twice flaked the previous < 1.0 s bound.
+        assert time.monotonic() - start < 10.0
         assert reg.pending() == 50
     finally:
         reg.close()
