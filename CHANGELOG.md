@@ -9,6 +9,9 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Changed
+- Python baseline raised 3.10 → 3.11 (`requires-python`, black `target-version`, CI matrix).
+
 ## [0.6.1] - 2026-09-30
 
 ### Fixed
