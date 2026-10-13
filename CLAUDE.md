@@ -34,7 +34,7 @@ New repo: work each task on its own `feature-*` branch and PR into `main` (relea
 ## Commands
 
 ```bash
-# Install (editable, with dev + test tooling). Use a python>=3.10 env.
+# Install (editable, with dev + test tooling). Use a python>=3.11 env.
 python -m pip install -e ".[dev]"      # everything (composes over [server])
 python -m pip install -e ".[server]"   # just run the service
 python -m pip install -e ".[auth]"     # just the shared auth helper (FastAPI-only)
