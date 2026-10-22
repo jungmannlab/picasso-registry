@@ -1464,6 +1464,254 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "Handoff": {
+        "description": "A dataset's hand-off row (response model for the state machine).",
+        "properties": {
+          "acquisition_run_id": {
+            "title": "Acquisition Run Id",
+            "type": "string"
+          },
+          "analysis_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Run Id"
+          },
+          "attempt": {
+            "default": 0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "state": {
+            "enum": [
+              "ready",
+              "claimed",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "worker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker"
+          }
+        },
+        "required": [
+          "acquisition_run_id",
+          "state"
+        ],
+        "title": "Handoff",
+        "type": "object"
+      },
+      "HandoffClaim": {
+        "description": "``POST /handoff/claim`` \u2014 atomic compare-and-set claim.\n\nWith ``acquisition_run_id`` set, claim that specific dataset; omit it to\natomically claim any one ``ready`` dataset (\"claim next\"). ``worker`` is\nthe claimant recorded on the won row.",
+        "properties": {
+          "acquisition_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acquisition Run Id"
+          },
+          "worker": {
+            "minLength": 1,
+            "title": "Worker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker"
+        ],
+        "title": "HandoffClaim",
+        "type": "object"
+      },
+      "HandoffReady": {
+        "description": "``POST /handoff/ready`` \u2014 the QC gate marks a dataset ready.",
+        "properties": {
+          "acquisition_run_id": {
+            "minLength": 1,
+            "title": "Acquisition Run Id",
+            "type": "string"
+          },
+          "analysis_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Run Id"
+          },
+          "attempt": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "required": [
+          "acquisition_run_id"
+        ],
+        "title": "HandoffReady",
+        "type": "object"
+      },
+      "HandoffTransition": {
+        "description": "``POST /handoff/transition`` \u2014 a guarded state transition.\n\nMoves ``acquisition_run_id`` from ``expected`` to ``to`` iff it is still in\n``expected`` (a single guarded UPDATE; rowcount 0 => 409 illegal/racey).",
+        "properties": {
+          "acquisition_run_id": {
+            "minLength": 1,
+            "title": "Acquisition Run Id",
+            "type": "string"
+          },
+          "analysis_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Run Id"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "expected": {
+            "enum": [
+              "ready",
+              "claimed",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "Expected",
+            "type": "string"
+          },
+          "to": {
+            "enum": [
+              "ready",
+              "claimed",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "To",
+            "type": "string"
+          },
+          "worker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker"
+          }
+        },
+        "required": [
+          "acquisition_run_id",
+          "expected",
+          "to"
+        ],
+        "title": "HandoffTransition",
+        "type": "object"
+      },
       "Illumination": {
         "additionalProperties": true,
         "properties": {
@@ -4710,6 +4958,280 @@
         "summary": "Get Fov",
         "tags": [
           "fov"
+        ]
+      }
+    },
+    "/handoff": {
+      "get": {
+        "description": "List hand-offs, optionally filtered by ``state`` (e.g. find work).",
+        "operationId": "handoff_list_handoff_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ready",
+                    "claimed",
+                    "running",
+                    "done",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Handoff"
+                  },
+                  "title": "Response Handoff List Handoff Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Handoff List",
+        "tags": [
+          "handoff"
+        ]
+      }
+    },
+    "/handoff/claim": {
+      "post": {
+        "description": "Atomic compare-and-set claim; 409 if lost / nothing ready.",
+        "operationId": "handoff_claim_handoff_claim_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffClaim"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Handoff"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Handoff Claim",
+        "tags": [
+          "handoff"
+        ]
+      }
+    },
+    "/handoff/ready": {
+      "post": {
+        "description": "QC gate marks a dataset ready (409 if already readied).\n\nThe dataset must already be a known ``acquisition_run`` \u2014 you cannot\nhand off a run that was never logged. SQLite doesn't enforce the FK, so\nthis is checked explicitly (mirroring the taxonomy-parent guard) and\nsurfaced as 400, not a dangling row.",
+        "operationId": "handoff_ready_handoff_ready_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffReady"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Handoff"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Handoff Ready",
+        "tags": [
+          "handoff"
+        ]
+      }
+    },
+    "/handoff/transition": {
+      "post": {
+        "description": "Guarded state transition; 409 on an illegal/racey move.",
+        "operationId": "handoff_transition_handoff_transition_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffTransition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Handoff"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Handoff Transition",
+        "tags": [
+          "handoff"
+        ]
+      }
+    },
+    "/handoff/{item_id}": {
+      "get": {
+        "operationId": "handoff_get_handoff__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Handoff"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Handoff Get",
+        "tags": [
+          "handoff"
         ]
       }
     },

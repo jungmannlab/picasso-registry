@@ -70,6 +70,93 @@ class _BaseRegistry:
         """
         return self._post("/cohort_metric_range", fields)
 
+    # WP-9 hand-off state machine ------------------------------------------
+    def mark_ready(
+        self,
+        acquisition_run_id: str,
+        *,
+        analysis_run_id: str | None = None,
+        detail: dict | None = None,
+        attempt: int | None = None,
+    ) -> dict[str, Any]:
+        """QC gate: mark a dataset ready for cluster hand-off.
+
+        A second ready for the same dataset is a 409 (``_post`` raises) — the
+        dataset is readied once per attempt.
+        """
+        body: dict[str, Any] = {"acquisition_run_id": acquisition_run_id}
+        if analysis_run_id is not None:
+            body["analysis_run_id"] = analysis_run_id
+        if detail is not None:
+            body["detail"] = detail
+        if attempt is not None:
+            body["attempt"] = attempt
+        return self._post("/handoff/ready", body)
+
+    def claim_handoff(
+        self,
+        worker: str,
+        *,
+        acquisition_run_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Atomically claim a ready dataset (exactly-once).
+
+        Returns the claimed hand-off row on a **win**; returns ``None`` on a
+        **loss** (the server 409s — lost the race, or nothing is ready). Other
+        HTTP errors propagate. With ``acquisition_run_id`` omitted, claims any
+        one ready dataset ("claim next").
+        """
+        body: dict[str, Any] = {"worker": worker}
+        if acquisition_run_id is not None:
+            body["acquisition_run_id"] = acquisition_run_id
+        return self._post_or_none_on_conflict("/handoff/claim", body)
+
+    def transition_handoff(
+        self,
+        acquisition_run_id: str,
+        *,
+        expected: str,
+        to: str,
+        worker: str | None = None,
+        analysis_run_id: str | None = None,
+        detail: dict | None = None,
+    ) -> dict[str, Any] | None:
+        """Guarded state transition ``expected -> to``.
+
+        Returns the updated row on success; returns ``None`` when the server
+        409s (illegal / racey transition — the row was not in ``expected``).
+        """
+        body: dict[str, Any] = {
+            "acquisition_run_id": acquisition_run_id,
+            "expected": expected,
+            "to": to,
+        }
+        if worker is not None:
+            body["worker"] = worker
+        if analysis_run_id is not None:
+            body["analysis_run_id"] = analysis_run_id
+        if detail is not None:
+            body["detail"] = detail
+        return self._post_or_none_on_conflict("/handoff/transition", body)
+
+    def list_handoffs(
+        self, *, state: str | None = None, **params: Any
+    ) -> list[dict[str, Any]]:
+        """List hand-offs, optionally filtered by ``state`` (find work)."""
+        if state is not None:
+            params["state"] = state
+        return self._get("/handoff", params or None)
+
+    def _post_or_none_on_conflict(
+        self, path: str, body: dict
+    ) -> dict[str, Any] | None:  # pragma: no cover
+        """``_post`` but a 409 becomes ``None`` (claim/transition lose).
+
+        Overridden per transport so a lost claim is a clean ``None`` instead of
+        a raised HTTP error. The base raises (subclasses must implement).
+        """
+        raise NotImplementedError
+
     def cohort(
         self,
         taxon_id: str,
@@ -160,5 +247,19 @@ class RegistryClient(_BaseRegistry):
             timeout=self.timeout,
             headers=self._auth_headers(),
         )
+        r.raise_for_status()
+        return r.json()
+
+    def _post_or_none_on_conflict(
+        self, path: str, body: dict
+    ) -> dict[str, Any] | None:
+        r = requests.post(
+            f"{self.base_url}{path}",
+            json=body,
+            timeout=self.timeout,
+            headers=self._auth_headers(),
+        )
+        if r.status_code == 409:
+            return None
         r.raise_for_status()
         return r.json()

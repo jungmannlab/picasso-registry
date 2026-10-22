@@ -96,6 +96,13 @@ class MockRegistryClient(_BaseRegistry):
         r.raise_for_status()
         return r.json()
 
+    def _post_or_none_on_conflict(self, path: str, body: dict):
+        r = self.client.post(path, json=body, headers=self._auth_headers())
+        if r.status_code == 409:
+            return None
+        r.raise_for_status()
+        return r.json()
+
     def close(self) -> None:
         self.client.close()
 

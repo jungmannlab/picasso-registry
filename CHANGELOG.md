@@ -10,6 +10,24 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 ## [Unreleased]
 
 ### Added
+- **`handoff` table + dataset hand-off state machine (WP-9 Phase A).** The
+  **one mutable table** in this otherwise append-only store: operational
+  cluster-submit queue state, so a QC-passed dataset is handed to the SLURM
+  cluster **exactly once**. One row per dataset (`acquisition_run_id` UNIQUE),
+  carried through `ready → claimed → running → done/failed`. Dedicated routes
+  (NOT generic CRUD, so arbitrary state writes can't bypass the guards):
+  `POST /handoff/ready` (QC gate marks ready — unknown `acquisition_run_id` →
+  400, duplicate → 409), `POST /handoff/claim` (**atomic compare-and-set**: a
+  single guarded `UPDATE … WHERE state='ready'`; `rowcount 1` → won, `0` → 409
+  lost — two concurrent claimers, only one wins; supports "claim next ready"
+  when no id is given), `POST /handoff/transition` (guarded `expected → to`;
+  illegal/racey edge → 409), and `GET /handoff?state=…` to find work. Legal
+  edges only: `ready→claimed`, `claimed→running`, `running→done`,
+  `claimed/running→failed`; a `failed` dataset may be re-readied under a bumped
+  `attempt`. Client helpers `mark_ready` / `claim_handoff` / `transition_handoff`
+  / `list_handoffs` (claim/transition return `None` on a 409 so the caller sees
+  win/lose). Migration `0005b_handoff` (down_revision `0005_cohort_metric_range`).
+  The run's provenance stays append-only in `analysis_run` / `qc`.
 - **`cohort_metric_range` table (WP-7 range write-back, append-only).** The
   WP-7 backfill's learned per-(taxon, metric) expected ranges (`p05`/`p50`/`p95`
   + `n` + `source`) can now be persisted queryably in the registry instead of

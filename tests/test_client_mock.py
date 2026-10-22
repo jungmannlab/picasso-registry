@@ -31,3 +31,29 @@ def test_client_surface_end_to_end():
     cohort = reg.cohort("child")
     assert cohort[0]["acquisition_run_id"] == "r1"
     assert cohort[0]["tree_distance"] == 0
+
+
+def test_handoff_client_helpers_win_lose():
+    reg = MockRegistryClient()
+    reg.log_acquisition(id="run1")
+
+    row = reg.mark_ready("run1")
+    assert row["state"] == "ready"
+
+    # First claim wins (returns the row); second loses (None).
+    won = reg.claim_handoff("node-a", acquisition_run_id="run1")
+    assert won is not None and won["worker"] == "node-a"
+    lost = reg.claim_handoff("node-b", acquisition_run_id="run1")
+    assert lost is None
+
+    # Guarded transition: a legal edge returns the row, an illegal one -> None.
+    running = reg.transition_handoff("run1", expected="claimed", to="running")
+    assert running is not None and running["state"] == "running"
+    illegal = reg.transition_handoff("run1", expected="claimed", to="done")
+    assert illegal is None
+
+    done = reg.transition_handoff("run1", expected="running", to="done")
+    assert done["state"] == "done"
+
+    assert reg.list_handoffs(state="done")[0]["acquisition_run_id"] == "run1"
+    assert reg.list_handoffs(state="ready") == []
