@@ -139,6 +139,22 @@ class _BaseRegistry:
             body["detail"] = detail
         return self._post_or_none_on_conflict("/handoff/transition", body)
 
+    def reready_handoff(
+        self,
+        acquisition_run_id: str,
+        *,
+        detail: dict | None = None,
+    ) -> dict[str, Any] | None:
+        """Re-queue a FAILED dataset (guarded ``failed -> ready``, attempt+1).
+
+        Returns the re-readied row on success; returns ``None`` when the server
+        409s (the dataset is not currently ``failed``).
+        """
+        body: dict[str, Any] = {"acquisition_run_id": acquisition_run_id}
+        if detail is not None:
+            body["detail"] = detail
+        return self._post_or_none_on_conflict("/handoff/reready", body)
+
     def list_handoffs(
         self, *, state: str | None = None, **params: Any
     ) -> list[dict[str, Any]]:

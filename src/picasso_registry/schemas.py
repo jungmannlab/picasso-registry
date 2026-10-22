@@ -373,10 +373,22 @@ class HandoffReady(BaseModel):
     acquisition_run_id: str = Field(min_length=1)
     analysis_run_id: str | None = None
     detail: dict | None = None
-    # Re-ready a previously-failed dataset under a bumped attempt. Omitted =>
-    # the first hand-off (attempt 0); the UNIQUE on acquisition_run_id makes a
-    # second ready for a *non-failed* row a 409.
-    attempt: int | None = None
+    # The initial hand-off is attempt 0 (omit); the UNIQUE on
+    # acquisition_run_id makes a second ready a 409 — re-queuing a *failed*
+    # dataset is the explicit POST /handoff/reready (which bumps attempt), not
+    # a plain re-ready. ``ge=0`` rejects a nonsensical negative attempt.
+    attempt: int | None = Field(default=None, ge=0)
+
+
+class HandoffReready(BaseModel):
+    """``POST /handoff/reready`` — re-queue a FAILED dataset (bumps attempt).
+
+    Guarded ``failed -> ready`` (rowcount 0 => 409 if the row isn't failed),
+    so a cluster job that failed can be retried without a dangling queue entry.
+    """
+
+    acquisition_run_id: str = Field(min_length=1)
+    detail: dict | None = None
 
 
 class HandoffClaim(BaseModel):

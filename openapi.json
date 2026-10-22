@@ -1612,6 +1612,7 @@
           "attempt": {
             "anyOf": [
               {
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -1637,6 +1638,33 @@
           "acquisition_run_id"
         ],
         "title": "HandoffReady",
+        "type": "object"
+      },
+      "HandoffReready": {
+        "description": "``POST /handoff/reready`` \u2014 re-queue a FAILED dataset (bumps attempt).\n\nGuarded ``failed -> ready`` (rowcount 0 => 409 if the row isn't failed),\nso a cluster job that failed can be retried without a dangling queue entry.",
+        "properties": {
+          "acquisition_run_id": {
+            "minLength": 1,
+            "title": "Acquisition Run Id",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "required": [
+          "acquisition_run_id"
+        ],
+        "title": "HandoffReready",
         "type": "object"
       },
       "HandoffTransition": {
@@ -5136,6 +5164,53 @@
           }
         ],
         "summary": "Handoff Ready",
+        "tags": [
+          "handoff"
+        ]
+      }
+    },
+    "/handoff/reready": {
+      "post": {
+        "description": "Re-queue a FAILED dataset (guarded ``failed -> ready``, attempt+1).\n\nThe only exit from the terminal ``failed`` state: a cluster job that\nfailed can be retried. 409 if the dataset is not currently ``failed``\n(not failed / already re-readied / unknown) \u2014 so a plain re-POST can't\naccidentally resurrect a live or done row.",
+        "operationId": "handoff_reready_handoff_reready_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffReready"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Handoff"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Handoff Reready",
         "tags": [
           "handoff"
         ]

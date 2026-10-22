@@ -478,6 +478,38 @@ def create_app(auth: AuthConfig | None = None) -> FastAPI:
             )
         return row
 
+    @app.post(
+        "/handoff/reready",
+        response_model=schemas.Handoff,
+        tags=["handoff"],
+        dependencies=_WRITE,
+    )
+    def handoff_reready(
+        payload: schemas.HandoffReready,
+        session: Session = Depends(get_session),
+    ):
+        """Re-queue a FAILED dataset (guarded ``failed -> ready``, attempt+1).
+
+        The only exit from the terminal ``failed`` state: a cluster job that
+        failed can be retried. 409 if the dataset is not currently ``failed``
+        (not failed / already re-readied / unknown) — so a plain re-POST can't
+        accidentally resurrect a live or done row.
+        """
+        row = crud.reready_failed_handoff(
+            session,
+            payload.acquisition_run_id,
+            detail=payload.detail,
+        )
+        if row is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "cannot re-ready "
+                    f"{payload.acquisition_run_id!r}: not in 'failed' state"
+                ),
+            )
+        return row
+
     @app.get(
         "/handoff/{item_id}",
         response_model=schemas.Handoff,

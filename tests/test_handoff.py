@@ -228,7 +228,7 @@ def test_ready_requires_existing_acquisition_run(client):
     assert r.status_code == 400
 
 
-def test_reready_after_failed_bumps_attempt(client):
+def test_reready_after_failed_requeues_with_bumped_attempt(client):
     _ready(client)
     client.post(
         "/handoff/claim",
@@ -242,20 +242,53 @@ def test_reready_after_failed_bumps_attempt(client):
             "to": "failed",
         },
     )
-    # A failed dataset may be re-readied under a bumped attempt.
-    again = _ready(client, attempt=1)
-    # UNIQUE still blocks a plain duplicate — re-ready is its own guarded path.
-    assert again.status_code == 409
+    # A plain re-ready 409s on the UNIQUE — re-queuing is the explicit route.
+    assert _ready(client, attempt=1).status_code == 409
+    # The dedicated re-ready route moves failed -> ready and bumps attempt.
+    rr = client.post("/handoff/reready", json={"acquisition_run_id": "run1"})
+    assert rr.status_code == 200
+    assert rr.json()["state"] == "ready"
+    assert rr.json()["attempt"] == 1
+    # It can now be claimed again.
+    cl = client.post(
+        "/handoff/claim",
+        json={"acquisition_run_id": "run1", "worker": "w2"},
+    )
+    assert cl.status_code == 200
 
 
-def test_transition_missing_row_409(client):
-    # No hand-off at all for this run yet.
+def test_reready_non_failed_409(client):
+    # A ready (not failed) dataset cannot be re-readied.
+    _ready(client)
+    r = client.post("/handoff/reready", json={"acquisition_run_id": "run1"})
+    assert r.status_code == 409
+
+
+def test_transition_cannot_claim_bypassing_claim_route(client):
+    # ready -> claimed is NOT a legal /handoff/transition edge: claiming is
+    # ONLY via the dedicated atomic claim route.
+    _ready(client)
     r = client.post(
         "/handoff/transition",
         json={
             "acquisition_run_id": "run1",
             "expected": "ready",
             "to": "claimed",
+            "worker": "sneaky",
+        },
+    )
+    assert r.status_code == 409
+
+
+def test_transition_missing_row_409(client):
+    # A legal edge (claimed->running) on a dataset with no hand-off row at all
+    # matches zero rows -> 409.
+    r = client.post(
+        "/handoff/transition",
+        json={
+            "acquisition_run_id": "run1",
+            "expected": "claimed",
+            "to": "running",
         },
     )
     assert r.status_code == 409
