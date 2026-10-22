@@ -265,6 +265,25 @@ class Metrics(_ORMExtra):
     extra: dict | None = None
 
 
+class CohortMetricRange(_ORMExtra):
+    """WP-7 learned per-(taxon, metric) expected range — append-only snapshot.
+
+    One row per (taxon_id, metric) learned-range snapshot. The store never
+    mutates, so a re-derived range inserts a new row; consumers read the
+    LATEST per (taxon_id, metric) by ``created_at`` / insertion order.
+    """
+
+    taxon_id: str | None = None
+    metric: str | None = None
+    p05: float | None = None
+    p50: float | None = None
+    p95: float | None = None
+    n: int | None = None
+    source: str | None = None
+    created_at: datetime | None = None
+    extra: dict | None = None
+
+
 class ResourceUsage(_ORMExtra):
     analysis_run_id: str | None = None
     module: str | None = None
@@ -374,6 +393,7 @@ class BulkIngest(BaseModel):
     sample_morphology: list[SampleMorphology] = []
     analysis_run: list[AnalysisRun] = []
     metrics: list[Metrics] = []
+    cohort_metric_range: list[CohortMetricRange] = []
     resource_usage: list[ResourceUsage] = []
     qc: list[Qc] = []
     feedback: list[Feedback] = []

@@ -61,6 +61,15 @@ class _BaseRegistry:
     def log_metrics(self, **fields: Any) -> dict[str, Any]:
         return self._post("/metrics", fields)
 
+    def log_cohort_range(self, **fields: Any) -> dict[str, Any]:
+        """Append one learned (taxon, metric) expected-range snapshot.
+
+        Thin wrapper over ``create("cohort_metric_range", ...)`` — WP-7's
+        range write-back. Append-only: a re-derived range POSTs a new row;
+        consumers read the latest per (taxon_id, metric).
+        """
+        return self._post("/cohort_metric_range", fields)
+
     def cohort(
         self,
         taxon_id: str,

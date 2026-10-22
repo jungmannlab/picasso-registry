@@ -454,6 +454,14 @@
             "title": "Artifact",
             "type": "array"
           },
+          "cohort_metric_range": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CohortMetricRange"
+            },
+            "title": "Cohort Metric Range",
+            "type": "array"
+          },
           "environment": {
             "default": [],
             "items": {
@@ -652,6 +660,126 @@
           "tree_distance"
         ],
         "title": "CohortItem",
+        "type": "object"
+      },
+      "CohortMetricRange": {
+        "additionalProperties": true,
+        "description": "WP-7 learned per-(taxon, metric) expected range \u2014 append-only snapshot.\n\nOne row per (taxon_id, metric) learned-range snapshot. The store never\nmutates, so a re-derived range inserts a new row; consumers read the\nLATEST per (taxon_id, metric) by ``created_at`` / insertion order.",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "extra": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N"
+          },
+          "p05": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P05"
+          },
+          "p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50"
+          },
+          "p95": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "taxon_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taxon Id"
+          }
+        },
+        "title": "CohortMetricRange",
         "type": "object"
       },
       "Environment": {
@@ -3588,6 +3716,159 @@
         "summary": "Query Cohort",
         "tags": [
           "query"
+        ]
+      }
+    },
+    "/cohort_metric_range": {
+      "get": {
+        "operationId": "list_cohort_metric_range_cohort_metric_range_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CohortMetricRange"
+                  },
+                  "title": "Response List Cohort Metric Range Cohort Metric Range Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Cohort Metric Range",
+        "tags": [
+          "cohort_metric_range"
+        ]
+      },
+      "post": {
+        "operationId": "create_cohort_metric_range_cohort_metric_range_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CohortMetricRange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortMetricRange"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Cohort Metric Range",
+        "tags": [
+          "cohort_metric_range"
+        ]
+      }
+    },
+    "/cohort_metric_range/{item_id}": {
+      "get": {
+        "operationId": "get_cohort_metric_range_cohort_metric_range__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortMetricRange"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Cohort Metric Range",
+        "tags": [
+          "cohort_metric_range"
         ]
       }
     },

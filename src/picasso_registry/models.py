@@ -338,6 +338,36 @@ class Metrics(Base):
     extra: Mapped[dict | None] = mapped_column(JSON)  # evolving metrics
 
 
+class CohortMetricRange(Base):
+    """WP-7 learned per-(taxon, metric) expected range (append-only snapshot).
+
+    The backfill (``picasso_workflow.backfill.ranges``) learns a robust
+    percentile band per sample taxon + metric from the metadata-complete
+    history and writes one row here per snapshot. Append-only like everything
+    else: a re-derivation inserts a *new* row rather than mutating the prior
+    one, so consumers read the LATEST row per (taxon_id, metric) by
+    ``created_at`` / insertion order. Deliberately NOT written onto
+    ``sample_taxonomy.expected_metrics`` (that stays as the taxonomy row's own
+    hand-set cascade; the recommender-read join is WP-10's concern).
+    """
+
+    __tablename__ = "cohort_metric_range"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    taxon_id: Mapped[str | None] = mapped_column(
+        ForeignKey("sample_taxonomy.id")
+    )
+    metric: Mapped[str | None] = mapped_column(String)
+    p05: Mapped[float | None] = mapped_column(Float)
+    p50: Mapped[float | None] = mapped_column(Float)
+    p95: Mapped[float | None] = mapped_column(Float)
+    n: Mapped[int | None] = mapped_column(Integer)
+    source: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    extra: Mapped[dict | None] = mapped_column(JSON)
+
+
 class ResourceUsage(Base):
     """Group I — compute & operational cost."""
 
