@@ -9,6 +9,19 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Added
+- **`cohort_metric_range` table (WP-7 range write-back, append-only).** The
+  WP-7 backfill's learned per-(taxon, metric) expected ranges (`p05`/`p50`/`p95`
+  + `n` + `source`) can now be persisted queryably in the registry instead of
+  only in a JSON sidecar. One row per (taxon_id, metric) learned-range snapshot;
+  append-only like everything else, so a re-derivation inserts a NEW row and
+  consumers read the LATEST per (taxon_id, metric) by `created_at` / insertion
+  order (the ULID id is time-sortable). Exposed through the generic
+  `create`/`get`/`list` + `/bulk` wiring plus a `log_cohort_range(**fields)`
+  client shortcut. Migration `0005_cohort_metric_range`. Deliberately does NOT
+  touch `sample_taxonomy.expected_metrics` — the recommender-read join is
+  WP-10's concern.
+
 ### Changed
 - Python baseline raised 3.10 → 3.11 (`requires-python`, black `target-version`, CI matrix).
 

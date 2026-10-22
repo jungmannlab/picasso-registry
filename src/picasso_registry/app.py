@@ -90,6 +90,12 @@ REGISTRY = [
     ("analysis_run", schemas.AnalysisRun, models.AnalysisRun, crud.persist),
     ("metrics", schemas.Metrics, models.Metrics, crud.persist),
     (
+        "cohort_metric_range",
+        schemas.CohortMetricRange,
+        models.CohortMetricRange,
+        crud.persist,
+    ),
+    (
         "resource_usage",
         schemas.ResourceUsage,
         models.ResourceUsage,
