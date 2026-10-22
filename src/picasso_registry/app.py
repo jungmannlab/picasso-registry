@@ -383,6 +383,165 @@ def create_app(auth: AuthConfig | None = None) -> FastAPI:
             qc_rules=qc_rules,
         )
 
+    # ── WP-9 hand-off state machine (the one MUTABLE surface) ────────────
+    # Operational cluster-submit queue state, not append-only provenance: a
+    # QC-passed dataset is handed to the cluster exactly once via an atomic
+    # compare-and-set claim. Deliberately NOT in REGISTRY — a generic
+    # ``POST /handoff`` would let callers write arbitrary state and bypass the
+    # guarded transitions. These dedicated routes are the only writers.
+    @app.post(
+        "/handoff/ready",
+        response_model=schemas.Handoff,
+        tags=["handoff"],
+        dependencies=_WRITE,
+    )
+    def handoff_ready(
+        payload: schemas.HandoffReady,
+        session: Session = Depends(get_session),
+    ):
+        """QC gate marks a dataset ready (409 if already readied).
+
+        The dataset must already be a known ``acquisition_run`` — you cannot
+        hand off a run that was never logged. SQLite doesn't enforce the FK, so
+        this is checked explicitly (mirroring the taxonomy-parent guard) and
+        surfaced as 400, not a dangling row.
+        """
+        if session.get(models.AcquisitionRun, payload.acquisition_run_id) is (
+            None
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "unknown acquisition_run_id "
+                    f"{payload.acquisition_run_id!r}"
+                ),
+            )
+        return crud.ready_handoff(
+            session,
+            payload.acquisition_run_id,
+            analysis_run_id=payload.analysis_run_id,
+            detail=payload.detail,
+            attempt=payload.attempt,
+        )
+
+    @app.post(
+        "/handoff/claim",
+        response_model=schemas.Handoff,
+        tags=["handoff"],
+        dependencies=_WRITE,
+    )
+    def handoff_claim(
+        payload: schemas.HandoffClaim,
+        session: Session = Depends(get_session),
+    ):
+        """Atomic compare-and-set claim; 409 if lost / nothing ready."""
+        won = crud.claim_handoff(
+            session,
+            payload.worker,
+            acquisition_run_id=payload.acquisition_run_id,
+        )
+        if won is None:
+            raise HTTPException(
+                status_code=409,
+                detail="no ready hand-off to claim (lost race or not ready)",
+            )
+        return won
+
+    @app.post(
+        "/handoff/transition",
+        response_model=schemas.Handoff,
+        tags=["handoff"],
+        dependencies=_WRITE,
+    )
+    def handoff_transition(
+        payload: schemas.HandoffTransition,
+        session: Session = Depends(get_session),
+    ):
+        """Guarded state transition; 409 on an illegal/racey move."""
+        row = crud.transition_handoff(
+            session,
+            payload.acquisition_run_id,
+            expected=payload.expected,
+            to=payload.to,
+            worker=payload.worker,
+            analysis_run_id=payload.analysis_run_id,
+            detail=payload.detail,
+        )
+        if row is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"illegal or racey transition "
+                    f"{payload.expected!r} -> {payload.to!r} for "
+                    f"{payload.acquisition_run_id!r}"
+                ),
+            )
+        return row
+
+    @app.post(
+        "/handoff/reready",
+        response_model=schemas.Handoff,
+        tags=["handoff"],
+        dependencies=_WRITE,
+    )
+    def handoff_reready(
+        payload: schemas.HandoffReready,
+        session: Session = Depends(get_session),
+    ):
+        """Re-queue a FAILED dataset (guarded ``failed -> ready``, attempt+1).
+
+        The only exit from the terminal ``failed`` state: a cluster job that
+        failed can be retried. 409 if the dataset is not currently ``failed``
+        (not failed / already re-readied / unknown) — so a plain re-POST can't
+        accidentally resurrect a live or done row.
+        """
+        row = crud.reready_failed_handoff(
+            session,
+            payload.acquisition_run_id,
+            detail=payload.detail,
+        )
+        if row is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "cannot re-ready "
+                    f"{payload.acquisition_run_id!r}: not in 'failed' state"
+                ),
+            )
+        return row
+
+    @app.get(
+        "/handoff/{item_id}",
+        response_model=schemas.Handoff,
+        tags=["handoff"],
+        dependencies=_READ,
+    )
+    def handoff_get(item_id: str, session: Session = Depends(get_session)):
+        obj = session.get(models.Handoff, item_id)
+        if obj is None:
+            raise HTTPException(status_code=404, detail="handoff not found")
+        return obj
+
+    @app.get(
+        "/handoff",
+        response_model=list[schemas.Handoff],
+        tags=["handoff"],
+        dependencies=_READ,
+    )
+    def handoff_list(
+        state: schemas.HandoffState | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        session: Session = Depends(get_session),
+    ):
+        """List hand-offs, optionally filtered by ``state`` (e.g. find work)."""
+        query = session.query(models.Handoff)
+        if state is not None:
+            query = query.filter(models.Handoff.state == state)
+        return (
+            query.order_by(models.Handoff.id).offset(offset).limit(limit).all()
+        )
+
     @app.post(
         "/bulk",
         response_model=schemas.BulkResult,

@@ -348,6 +348,76 @@ class Interpretation(_ORM):
     created_at: datetime | None = None
 
 
+# ── Hand-off state machine (WP-9, MUTABLE job-queue state) ───────────────
+# The one mutable table: operational cluster-submit state, not append-only
+# provenance. States + legal transitions are a closed set.
+HandoffState = Literal["ready", "claimed", "running", "done", "failed"]
+
+
+class Handoff(_ORM):
+    """A dataset's hand-off row (response model for the state machine)."""
+
+    acquisition_run_id: str
+    analysis_run_id: str | None = None
+    state: HandoffState
+    worker: str | None = None
+    attempt: int = 0
+    detail: dict | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class HandoffReady(BaseModel):
+    """``POST /handoff/ready`` — the QC gate marks a dataset ready."""
+
+    acquisition_run_id: str = Field(min_length=1)
+    analysis_run_id: str | None = None
+    detail: dict | None = None
+    # The initial hand-off is attempt 0 (omit); the UNIQUE on
+    # acquisition_run_id makes a second ready a 409 — re-queuing a *failed*
+    # dataset is the explicit POST /handoff/reready (which bumps attempt), not
+    # a plain re-ready. ``ge=0`` rejects a nonsensical negative attempt.
+    attempt: int | None = Field(default=None, ge=0)
+
+
+class HandoffReready(BaseModel):
+    """``POST /handoff/reready`` — re-queue a FAILED dataset (bumps attempt).
+
+    Guarded ``failed -> ready`` (rowcount 0 => 409 if the row isn't failed),
+    so a cluster job that failed can be retried without a dangling queue entry.
+    """
+
+    acquisition_run_id: str = Field(min_length=1)
+    detail: dict | None = None
+
+
+class HandoffClaim(BaseModel):
+    """``POST /handoff/claim`` — atomic compare-and-set claim.
+
+    With ``acquisition_run_id`` set, claim that specific dataset; omit it to
+    atomically claim any one ``ready`` dataset ("claim next"). ``worker`` is
+    the claimant recorded on the won row.
+    """
+
+    worker: str = Field(min_length=1)
+    acquisition_run_id: str | None = None
+
+
+class HandoffTransition(BaseModel):
+    """``POST /handoff/transition`` — a guarded state transition.
+
+    Moves ``acquisition_run_id`` from ``expected`` to ``to`` iff it is still in
+    ``expected`` (a single guarded UPDATE; rowcount 0 => 409 illegal/racey).
+    """
+
+    acquisition_run_id: str = Field(min_length=1)
+    expected: HandoffState
+    to: HandoffState
+    worker: str | None = None
+    analysis_run_id: str | None = None
+    detail: dict | None = None
+
+
 # ── Derived query results & bulk ingest ──────────────────────────────────
 
 

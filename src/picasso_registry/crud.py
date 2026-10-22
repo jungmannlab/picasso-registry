@@ -8,14 +8,32 @@ defaults (e.g. ``created_at``) apply and absent features stay NULL.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ulid import ULID
 
 from . import models
 from .taxonomy import build_path
+
+# WP-9 hand-off state machine: the legal transitions. Everything else 409s.
+# ready --claim--> claimed --running--> running --done--> done
+# claimed/running --failed--> failed (then optionally re-readied, new attempt).
+HANDOFF_TRANSITIONS: dict[str, set[str]] = {
+    # ``ready -> claimed`` is deliberately NOT here: claiming is ONLY via the
+    # dedicated atomic claim (``claim_handoff`` / ``POST /handoff/claim``), so
+    # the generic transition route can't be used to claim a row (set a worker)
+    # and bypass the exactly-once claim path. Likewise ``failed -> ready`` is
+    # only via ``reready_failed_handoff`` / ``POST /handoff/reready``.
+    "ready": set(),
+    "claimed": {"running", "failed"},
+    "running": {"done", "failed"},
+    "done": set(),
+    "failed": set(),
+}
 
 
 class UnknownParent(Exception):
@@ -143,3 +161,202 @@ def persist_taxonomy(
         parent_path = parent.path
     data["path"] = build_path(data["id"], parent_path)
     return _insert(session, orm_cls(**_row(orm_cls, data)), commit=commit)
+
+
+# ── WP-9 hand-off state machine (mutable job-queue state) ─────────────────
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def ready_handoff(
+    session: Session,
+    acquisition_run_id: str,
+    *,
+    analysis_run_id: str | None = None,
+    detail: dict | None = None,
+    attempt: int | None = None,
+) -> models.Handoff:
+    """Insert a ``ready`` hand-off row for a dataset (the QC gate's mark).
+
+    UNIQUE on ``acquisition_run_id`` makes a second ready for the same dataset
+    a clean 409 (``Conflict``) rather than a duplicate queue entry — a dataset
+    is readied once per attempt. Re-readying a *failed* dataset is a separate,
+    explicit path (see ``reready_failed_handoff``), not a plain re-POST.
+    """
+    row = models.Handoff(
+        id=new_id(),
+        acquisition_run_id=acquisition_run_id,
+        analysis_run_id=analysis_run_id,
+        state="ready",
+        detail=detail,
+        attempt=attempt if attempt is not None else 0,
+    )
+    return _insert(session, row, commit=True)
+
+
+def claim_handoff(
+    session: Session,
+    worker: str,
+    *,
+    acquisition_run_id: str | None = None,
+) -> models.Handoff | None:
+    """Atomically claim a ``ready`` dataset (the exactly-once guarantee).
+
+    A single guarded UPDATE flips ``ready -> claimed`` only while the row is
+    still ``ready``; ``rowcount == 1`` means this caller won, ``0`` means it
+    lost (someone else claimed it, or it is not ready). Two concurrent claimers
+    therefore cannot both win: the database serializes the conditional UPDATE,
+    so exactly one sees rowcount 1. With ``acquisition_run_id`` omitted this
+    claims any one ready row ("claim next"), picking the oldest by ``id``.
+
+    Returns the claimed ``Handoff`` on a win, or ``None`` on a loss / no work.
+    For "claim next" (``acquisition_run_id`` omitted) a lost CAS does NOT give
+    up: it re-queries for the next ready row, so claim-next only returns
+    ``None`` when the queue is genuinely empty — not because a concurrent
+    worker grabbed the candidate we happened to pick first.
+    """
+    if acquisition_run_id is not None:
+        # Claim a SPECIFIC dataset: one guarded compare-and-set.
+        result = session.execute(
+            update(models.Handoff)
+            .where(
+                models.Handoff.acquisition_run_id == acquisition_run_id,
+                models.Handoff.state == "ready",
+            )
+            .values(state="claimed", worker=worker, updated_at=_utcnow())
+        )
+        if result.rowcount != 1:
+            session.rollback()
+            return None
+        session.commit()
+        session.expire_all()
+        return (
+            session.query(models.Handoff)
+            .filter(models.Handoff.acquisition_run_id == acquisition_run_id)
+            .one()
+        )
+
+    # Claim-next: iterate ready candidates (oldest first), CAS-claiming each,
+    # until one is won or none remain. If a concurrent worker wins a candidate
+    # between our unlocked SELECT and our CAS (rowcount 0), we re-query for the
+    # NEXT ready row rather than 409-ing with work still queued. The CAS still
+    # guarantees exactly-once (only the winner gets rowcount 1). Bounded by the
+    # number of ready rows, so it terminates.
+    while True:
+        row = (
+            session.query(models.Handoff.acquisition_run_id)
+            .filter(models.Handoff.state == "ready")
+            .order_by(models.Handoff.id)
+            .first()
+        )
+        if row is None:
+            return None
+        target_id = row[0]
+        result = session.execute(
+            update(models.Handoff)
+            .where(
+                models.Handoff.acquisition_run_id == target_id,
+                models.Handoff.state == "ready",
+            )
+            .values(state="claimed", worker=worker, updated_at=_utcnow())
+        )
+        if result.rowcount == 1:
+            session.commit()
+            session.expire_all()
+            return (
+                session.query(models.Handoff)
+                .filter(models.Handoff.acquisition_run_id == target_id)
+                .one()
+            )
+        # Lost this candidate to a concurrent claimer; drop the aborted txn so
+        # the next SELECT sees committed state, and try the next ready row.
+        session.rollback()
+
+
+def transition_handoff(
+    session: Session,
+    acquisition_run_id: str,
+    *,
+    expected: str,
+    to: str,
+    worker: str | None = None,
+    analysis_run_id: str | None = None,
+    detail: dict | None = None,
+) -> models.Handoff | None:
+    """Guarded state transition ``expected -> to`` on one hand-off row.
+
+    Rejects any transition not in ``HANDOFF_TRANSITIONS`` up front (illegal
+    edge), then applies a single guarded UPDATE keyed on the row still being in
+    ``expected``: ``rowcount 1`` wins, ``0`` loses (wrong current state / racey
+    / terminal) and the caller gets ``None`` -> 409. Optional ``worker`` /
+    ``analysis_run_id`` / ``detail`` are set on the won row (e.g. the failure
+    reason on ``-> failed``).
+    """
+    if to not in HANDOFF_TRANSITIONS.get(expected, set()):
+        return None
+    values: dict[str, Any] = {"state": to, "updated_at": _utcnow()}
+    if worker is not None:
+        values["worker"] = worker
+    if analysis_run_id is not None:
+        values["analysis_run_id"] = analysis_run_id
+    if detail is not None:
+        values["detail"] = detail
+    result = session.execute(
+        update(models.Handoff)
+        .where(
+            models.Handoff.acquisition_run_id == acquisition_run_id,
+            models.Handoff.state == expected,
+        )
+        .values(**values)
+    )
+    if result.rowcount != 1:
+        session.rollback()
+        return None
+    session.commit()
+    session.expire_all()
+    return (
+        session.query(models.Handoff)
+        .filter(models.Handoff.acquisition_run_id == acquisition_run_id)
+        .one()
+    )
+
+
+def reready_failed_handoff(
+    session: Session,
+    acquisition_run_id: str,
+    *,
+    detail: dict | None = None,
+) -> models.Handoff | None:
+    """Re-ready a ``failed`` dataset, bumping ``attempt`` (guarded UPDATE).
+
+    Only a row currently in ``failed`` may be re-queued; the guarded UPDATE
+    (``... WHERE state='failed'``) makes this exactly-once too (rowcount 0 =>
+    None => 409). ``attempt`` is incremented so the retry is distinguishable in
+    the queue history.
+    """
+    result = session.execute(
+        update(models.Handoff)
+        .where(
+            models.Handoff.acquisition_run_id == acquisition_run_id,
+            models.Handoff.state == "failed",
+        )
+        .values(
+            state="ready",
+            worker=None,
+            attempt=models.Handoff.attempt + 1,
+            detail=detail,
+            updated_at=_utcnow(),
+        )
+    )
+    if result.rowcount != 1:
+        session.rollback()
+        return None
+    session.commit()
+    session.expire_all()
+    return (
+        session.query(models.Handoff)
+        .filter(models.Handoff.acquisition_run_id == acquisition_run_id)
+        .one()
+    )

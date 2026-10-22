@@ -442,6 +442,53 @@ class Artifact(Base):
     size_bytes: Mapped[int | None] = mapped_column(BigInteger)
 
 
+# ── Operational job-queue state (MUTABLE — the one exception) ────────────
+
+
+class Handoff(Base):
+    """WP-9: the dataset hand-off state machine (cluster submit queue).
+
+    Unlike every other table here, this one is **mutable**: it is operational
+    job-queue state, not append-only provenance. One row per QC-passed dataset
+    (``acquisition_run_id`` is UNIQUE), carrying the dataset through the
+    ``ready -> claimed -> running -> done/failed`` lifecycle. The exactly-once
+    cluster claim rides on an atomic compare-and-set ``UPDATE ... WHERE
+    state='ready'`` (see ``crud.claim_handoff``): two concurrent workers race,
+    exactly one gets ``rowcount == 1``. The append-only provenance of the run
+    itself still lives in ``analysis_run`` / ``qc`` — this table only tracks
+    *which stage of the submit queue* the dataset is in.
+    """
+
+    __tablename__ = "handoff"
+    # One hand-off per dataset: readying a dataset twice (same attempt) is a
+    # no-op/409 via this UNIQUE, mirroring analysis_run's natural-key guard.
+    __table_args__ = (
+        UniqueConstraint(
+            "acquisition_run_id", name="uq_handoff_acquisition_run_id"
+        ),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    acquisition_run_id: Mapped[str] = mapped_column(
+        ForeignKey("acquisition_run.id"), nullable=False
+    )
+    # The cluster analysis_run this hand-off produced (set when known).
+    analysis_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("analysis_run.id")
+    )
+    # ready | claimed | running | done | failed (validated at the schema layer).
+    state: Mapped[str] = mapped_column(String, nullable=False)
+    worker: Mapped[str | None] = mapped_column(String)
+    attempt: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    detail: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    # Bumped on every state change (mutable — not the append-only convention).
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
 class Interpretation(Base):
     """Part VII — per-run interpretation (initiative #9)."""
 
