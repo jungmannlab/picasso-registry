@@ -9,6 +9,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-28
+
 ### Added
 - **`handoff` table + dataset hand-off state machine (WP-9 Phase A).** The
   **one mutable table** in this otherwise append-only store: operational
