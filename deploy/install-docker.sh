@@ -91,16 +91,28 @@ else
     log "updating source in $SRC_DIR -> $GIT_REF"
     git -C "$SRC_DIR" fetch --all --tags --quiet
     git -C "$SRC_DIR" checkout --quiet "$GIT_REF"
-    git -C "$SRC_DIR" pull --ff-only --quiet 2>/dev/null || true
+    # If GIT_REF is a BRANCH, fast-forward it to the just-fetched remote tip.
+    # (A tag/SHA leaves HEAD detached -> symbolic-ref fails -> skip.) Do NOT
+    # swallow a failed ff: a diverged local branch must abort loudly, not
+    # silently rebuild the image from stale source.
+    if git -C "$SRC_DIR" symbolic-ref -q HEAD >/dev/null; then
+      git -C "$SRC_DIR" merge --ff-only --quiet "origin/$GIT_REF"
+    fi
   else
     log "cloning $REPO_URL -> $SRC_DIR ($GIT_REF)"
     git clone --quiet "$REPO_URL" "$SRC_DIR"
     git -C "$SRC_DIR" checkout --quiet "$GIT_REF"
   fi
+  # Derive the Python floor from the single source of truth (pyproject's
+  # requires-python) and feed it to the image's PYVER build-arg, so a floor
+  # bump doesn't need a matching Dockerfile edit. Fallback 11 if unparseable.
+  PYVER_MINOR="$(sed -nE 's/^[[:space:]]*requires-python[[:space:]]*=[[:space:]]*"[^"]*3\.([0-9]+).*/\1/p' "$SRC_DIR/pyproject.toml" | head -1)"
   # Tag with the resolved ref AND latest so the running container is traceable.
   TAG="$(git -C "$SRC_DIR" describe --tags --always 2>/dev/null || echo "$GIT_REF")"
-  log "building image $IMAGE:$TAG"
-  docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" "$SRC_DIR"
+  log "building image $IMAGE:$TAG (python 3.${PYVER_MINOR:-11})"
+  DOCKER_BUILDKIT=1 docker build \
+    --build-arg "PYVER=3.${PYVER_MINOR:-11}" \
+    -t "$IMAGE:$TAG" -t "$IMAGE:latest" "$SRC_DIR"
 fi
 
 # ---- 4. directories + token env file (preserve if it already has content) ---
@@ -108,11 +120,16 @@ install -d -m 750 "$DATA_DIR" "$ETC_DIR"
 if [ -s "$ENV_FILE" ]; then
   log "keeping existing token file $ENV_FILE"
 else
-  log "no tokens at $ENV_FILE — minting one write ($(hostname -s)) + one read (lab-dashboard) token"
+  # Sanitize the hostname to the token-label charset and fall back if empty,
+  # so an odd/empty `hostname -s` can't make `token add` reject the label and
+  # abort the install (set -e) after the image is already built.
+  HOSTLABEL="$(hostname -s 2>/dev/null | tr -cd 'A-Za-z0-9._-')"
+  HOSTLABEL="${HOSTLABEL:-registry-host}"
+  log "no tokens at $ENV_FILE — minting one write ($HOSTLABEL) + one read (lab-dashboard) token"
   # The token CLI lives in the image; mint via throwaway containers with
   # $ETC_DIR mounted rw so the file is created on the host.
   docker run --rm -v "$ETC_DIR:$CONTAINER_ETC" "$IMAGE:latest" \
-    picasso-registry token add --scope write --label "$(hostname -s)" \
+    picasso-registry token add --scope write --label "$HOSTLABEL" \
     --env-file "$CONTAINER_ENV_FILE"
   docker run --rm -v "$ETC_DIR:$CONTAINER_ETC" "$IMAGE:latest" \
     picasso-registry token add --scope read --label lab-dashboard \
@@ -143,9 +160,11 @@ docker run -d \
   "$IMAGE:latest" >/dev/null
 
 # ---- 6. health ---------------------------------------------------------------
+# Poll for ~30s (matches the CI smoke job): on a fresh/slow box the CMD runs
+# `alembic upgrade head` BEFORE the service binds, which can take >10s.
 log "waiting for the service to answer /health"
 ok=""
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+for _ in $(seq 1 30); do
   if curl -fsS "http://localhost:$REGISTRY_PORT/health" >/dev/null 2>&1; then
     ok=1; break
   fi
@@ -154,7 +173,7 @@ done
 docker ps --filter "name=$CONTAINER" \
   --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 if [ -z "$ok" ]; then
-  echo "WARNING: /health did not answer within ~10s — check: docker logs $CONTAINER" >&2
+  echo "WARNING: /health did not answer within ~30s — check: docker logs $CONTAINER" >&2
 fi
 
 echo

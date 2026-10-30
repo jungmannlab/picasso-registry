@@ -207,7 +207,8 @@ sudo bash deploy/install-docker.sh                  # first install (main)
 sudo GIT_REF=v0.7.0 bash deploy/install-docker.sh   # pinned install / upgrade
 ```
 
-**By hand:**
+**By hand:** (the Dockerfile uses a BuildKit cache mount — default in Docker
+≥23; on an older daemon prefix with `DOCKER_BUILDKIT=1`)
 ```bash
 docker build -t picasso-registry .
 # SQLite on a named volume (survives container replacement):

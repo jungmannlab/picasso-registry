@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # picasso-registry service image.
 #
 # Builds the FastAPI provenance/metrics service into a small runtime image.
@@ -11,22 +12,31 @@
 # `docker build` from a tagged checkout reports e.g. 0.7.0, not the
 # 0.0.1.dev0 fallback a git-less slim image would produce.
 
+# Python floor — keep in sync with pyproject's requires-python. deploy/
+# install-docker.sh derives this from pyproject and passes it as --build-arg
+# PYVER=3.N; this default is the fallback for a bare `docker build`, and CI's
+# image build would fail loudly (pip "requires a different Python") if it drifts.
+ARG PYVER=3.11
+
 # ---- builder: resolve version from git, build wheels ------------------------
-FROM python:3.11-slim AS builder
+FROM python:${PYVER}-slim AS builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
-ENV PIP_NO_CACHE_DIR=1
 WORKDIR /app
 # .git is needed here (setuptools-scm reads the tags); it is NOT copied into
 # the runtime image below.
 COPY . /app
 # Build the package wheel (version stamped from the tags) plus wheels for the
 # [server,client] dependency closure, so the runtime install is fully offline.
-RUN pip wheel --wheel-dir /wheels ".[server,client]"
+# The BuildKit cache mount keeps pip's download cache across rebuilds: a source
+# edit still rebuilds the package wheel (setuptools-scm needs .git, so it can't
+# cache) but the dependency closure isn't re-fetched.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip wheel --wheel-dir /wheels ".[server,client]"
 
 # ---- runtime: slim, git-less ------------------------------------------------
-FROM python:3.11-slim
+FROM python:${PYVER}-slim
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PAINT_REGISTRY_HOST=0.0.0.0 \
