@@ -9,6 +9,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-30
+
 ### Added
 - **Containerized deploy — `deploy/install-docker.sh`.** A Docker counterpart to
   `deploy/setup-server.sh` with the same data/token layout (DB bind-mounted at
@@ -58,6 +60,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
   tag-derived version into a wheel, which the git-less slim runtime installs
   offline — so an image built from a tagged checkout reports e.g. `0.7.0`
   instead of the `0.0.1.dev0` fallback a git-less build produced.
+
+## [0.7.0] - 2026-10-28
 
 ### Added
 - **`handoff` table + dataset hand-off state machine (WP-9 Phase A).** The
