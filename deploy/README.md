@@ -82,9 +82,23 @@ docker run --rm -v /etc/picasso-registry:/etc/picasso-registry picasso-registry 
 docker kill --signal=HUP picasso-registry  # re-read the token map, no restart
 ```
 
+**Pull a prebuilt image instead of building** (the fast path for a new lab box
+— no git clone, no build toolchain). On a `v*` release tag, CI publishes
+`ghcr.io/jungmannlab/picasso-registry:<version>` (see
+`.github/workflows/docker-image.yml`). Point `PULL_IMAGE` at it:
+
+```bash
+sudo PULL_IMAGE=ghcr.io/jungmannlab/picasso-registry:v0.7.0 \
+  bash deploy/install-docker.sh
+```
+
+If the GHCR package is private, `docker login ghcr.io` once first; if it's
+public, nothing extra is needed.
+
 Container-path overrides: `REGISTRY_PORT` (host port, default `8000`), `IMAGE`,
-`CONTAINER`, `GIT_REF`, plus `SKIP_DOCKER_INSTALL=1` to refuse auto-installing
-Docker. `DATA_DIR` / `ETC_DIR` / `SRC_DIR` match the bare-metal paths.
+`CONTAINER`, `GIT_REF`, `PULL_IMAGE` (pull instead of build), plus
+`SKIP_DOCKER_INSTALL=1` to refuse auto-installing Docker. `DATA_DIR` /
+`ETC_DIR` / `SRC_DIR` match the bare-metal paths.
 
 ## Where everything lives
 

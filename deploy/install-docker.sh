@@ -38,6 +38,12 @@ ETC_DIR="${ETC_DIR:-/etc/picasso-registry}"        # registry.env (tokens)
 ENV_FILE="${ENV_FILE:-$ETC_DIR/registry.env}"
 REPO_URL="${REPO_URL:-https://github.com/jungmannlab/picasso-registry.git}"
 GIT_REF="${GIT_REF:-main}"                         # pin a tag in production!
+# Set PULL_IMAGE to a published image ref (e.g.
+# ghcr.io/jungmannlab/picasso-registry:v0.7.0) to pull a prebuilt image
+# instead of cloning + building locally — the fast path for a new lab box.
+# A private GHCR package needs `docker login ghcr.io` first; a public one
+# needs nothing. Unset (default) = clone $REPO_URL@$GIT_REF and build.
+PULL_IMAGE="${PULL_IMAGE:-}"
 REGISTRY_PORT="${REGISTRY_PORT:-8000}"             # host port -> container 8000
 # The token file path INSIDE the container (where $ETC_DIR is mounted):
 CONTAINER_ETC="/etc/picasso-registry"
@@ -66,27 +72,36 @@ docker info >/dev/null 2>&1 || {
   exit 1
 }
 
-# ---- 2. source checkout (idempotent) ----------------------------------------
-# .git is part of the build context: setuptools-scm derives the version from
-# the tags at build time (see Dockerfile). mkdir -p (not install -d) so an
-# existing $APP_DIR created by setup-server.sh keeps its owner/mode.
-mkdir -p "$APP_DIR"
-if [ -d "$SRC_DIR/.git" ]; then
-  log "updating source in $SRC_DIR -> $GIT_REF"
-  git -C "$SRC_DIR" fetch --all --tags --quiet
-  git -C "$SRC_DIR" checkout --quiet "$GIT_REF"
-  git -C "$SRC_DIR" pull --ff-only --quiet 2>/dev/null || true
+# ---- 2. obtain the image (pull a prebuilt one, or clone + build) ------------
+if [ -n "$PULL_IMAGE" ]; then
+  log "pulling prebuilt image $PULL_IMAGE"
+  docker pull "$PULL_IMAGE" || {
+    echo "ERROR: could not pull $PULL_IMAGE. If the GHCR package is private," >&2
+    echo "run 'docker login ghcr.io' first, or unset PULL_IMAGE to build locally." >&2
+    exit 1
+  }
+  # Normalize to $IMAGE:latest so the steps below are pull/build agnostic.
+  docker tag "$PULL_IMAGE" "$IMAGE:latest"
 else
-  log "cloning $REPO_URL -> $SRC_DIR ($GIT_REF)"
-  git clone --quiet "$REPO_URL" "$SRC_DIR"
-  git -C "$SRC_DIR" checkout --quiet "$GIT_REF"
+  # .git is part of the build context: setuptools-scm derives the version from
+  # the tags at build time (see Dockerfile). mkdir -p (not install -d) so an
+  # existing $APP_DIR created by setup-server.sh keeps its owner/mode.
+  mkdir -p "$APP_DIR"
+  if [ -d "$SRC_DIR/.git" ]; then
+    log "updating source in $SRC_DIR -> $GIT_REF"
+    git -C "$SRC_DIR" fetch --all --tags --quiet
+    git -C "$SRC_DIR" checkout --quiet "$GIT_REF"
+    git -C "$SRC_DIR" pull --ff-only --quiet 2>/dev/null || true
+  else
+    log "cloning $REPO_URL -> $SRC_DIR ($GIT_REF)"
+    git clone --quiet "$REPO_URL" "$SRC_DIR"
+    git -C "$SRC_DIR" checkout --quiet "$GIT_REF"
+  fi
+  # Tag with the resolved ref AND latest so the running container is traceable.
+  TAG="$(git -C "$SRC_DIR" describe --tags --always 2>/dev/null || echo "$GIT_REF")"
+  log "building image $IMAGE:$TAG"
+  docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" "$SRC_DIR"
 fi
-
-# ---- 3. build the image ------------------------------------------------------
-# Tag with the resolved ref AND latest so the running container is traceable.
-TAG="$(git -C "$SRC_DIR" describe --tags --always 2>/dev/null || echo "$GIT_REF")"
-log "building image $IMAGE:$TAG"
-docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" "$SRC_DIR"
 
 # ---- 4. directories + token env file (preserve if it already has content) ---
 install -d -m 750 "$DATA_DIR" "$ETC_DIR"

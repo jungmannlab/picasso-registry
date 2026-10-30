@@ -20,6 +20,16 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
   upgrade. Tokens are mounted (not injected as `-e`) so `docker kill
   --signal=HUP` live-reloads them. Documented in `deploy/README.md` (now covers
   both deploy paths) and the README Container section.
+- **CI Docker workflow — `.github/workflows/docker-image.yml`.** A `smoke` job
+  on every PR/push builds the image and actually runs it (migrate on start,
+  bind `0.0.0.0` with a minted token, poll `/health`, assert the version is
+  tag-derived) — the safety net that would have caught the stale-Python-floor
+  Dockerfile bug before release. A `publish` job (gated on `smoke`) pushes to
+  `ghcr.io/<owner>/picasso-registry` on `v*` release tags, so labs can
+  `docker pull` a versioned image.
+- **`install-docker.sh` can pull a prebuilt image** via `PULL_IMAGE=…` instead
+  of cloning + building — the fast path for a new lab box (pairs with the GHCR
+  publish above).
 
 ### Fixed
 - **Python floor bumped to 3.11 in the deploy paths.** `deploy/setup-server.sh`
