@@ -196,6 +196,18 @@ picasso-registry --host 0.0.0.0 --port 8000
   share lab-wide, the `write` token is the sensitive one.
 
 ### Container
+
+**Scripted (recommended)** — one script installs Docker if missing, builds the
+image, mints tokens, bind-mounts the DB, and (re)starts the container; re-run to
+upgrade (see [`deploy/README.md`](deploy/README.md)). This is the path to use on
+a host without Python ≥3.11:
+
+```bash
+sudo bash deploy/install-docker.sh                  # first install (main)
+sudo GIT_REF=v0.7.0 bash deploy/install-docker.sh   # pinned install / upgrade
+```
+
+**By hand:**
 ```bash
 docker build -t picasso-registry .
 # SQLite on a named volume (survives container replacement):
@@ -205,6 +217,12 @@ docker run -p 8000:8000 \
   -e PAINT_REGISTRY_URL=postgresql+psycopg://user:pass@db/picasso_registry \
   picasso-registry
 ```
+
+> On a **non-loopback** bind the service fail-closes without tokens, so a
+> by-hand `docker run` that binds `0.0.0.0` must supply them. Mount the token
+> file and point `PAINT_REGISTRY_ENV_FILE` at it (keeps `docker kill
+> --signal=HUP` live-reload working) rather than injecting `PAINT_REGISTRY_TOKENS`
+> as `-e` (which disables reload). The scripted install wires this for you.
 The image defaults to `--host 0.0.0.0` and a SQLite DB at `/data`; on start it
 runs `alembic upgrade head` (the single schema authority; idempotent once the
 DB is at head) and then serves. For a dedicated migrate stage, drop the
