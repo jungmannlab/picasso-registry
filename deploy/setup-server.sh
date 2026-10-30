@@ -67,37 +67,55 @@ if [ -d "$SRC_DIR/.git" ]; then
   log "updating source in $SRC_DIR -> $GIT_REF"
   as_registry git -C "$SRC_DIR" fetch --all --tags --quiet
   as_registry git -C "$SRC_DIR" checkout --quiet "$GIT_REF"
-  as_registry git -C "$SRC_DIR" pull --ff-only --quiet 2>/dev/null || true
+  # Fast-forward a BRANCH ref to the just-fetched remote tip (a tag/SHA leaves
+  # HEAD detached -> symbolic-ref fails -> skip). Don't swallow a failed ff: a
+  # diverged local branch must abort loudly, not reinstall from stale source.
+  if as_registry git -C "$SRC_DIR" symbolic-ref -q HEAD >/dev/null; then
+    as_registry git -C "$SRC_DIR" merge --ff-only --quiet "origin/$GIT_REF"
+  fi
 else
   log "cloning $REPO_URL -> $SRC_DIR ($GIT_REF)"
   as_registry git clone --quiet "$REPO_URL" "$SRC_DIR"
   as_registry git -C "$SRC_DIR" checkout --quiet "$GIT_REF"
 fi
 
-# Python >=3.10 (the repo floor). The system python3 on older distros
-# (Ubuntu 20.04 = 3.8) is too old — see monet's deployment doc for deadsnakes.
+# Python floor — derived from the single source of truth (pyproject's
+# requires-python), so a floor bump needs no edit here. Fallback 11 if
+# unparseable. The system python3 on older distros (Ubuntu 20.04 = 3.8,
+# 22.04 = 3.10) is too old — see monet's deployment doc for deadsnakes.
+PYFLOOR_MINOR="$(sed -nE 's/^[[:space:]]*requires-python[[:space:]]*=[[:space:]]*"[^"]*3\.([0-9]+).*/\1/p' "$SRC_DIR/pyproject.toml" | head -1)"
+PYFLOOR_MINOR="${PYFLOOR_MINOR:-11}"
 pick_python() {
   local c
-  for c in "${PYTHON:-}" python3.12 python3.11 python3.10; do
+  for c in "${PYTHON:-}" python3.13 python3.12 python3.11; do
     [ -n "$c" ] || continue
     command -v "$c" >/dev/null 2>&1 || continue
-    if "$c" -c 'import sys;raise SystemExit(0 if sys.version_info[:2]>=(3,10) else 1)' 2>/dev/null; then
+    if "$c" -c "import sys;raise SystemExit(0 if sys.version_info[:2]>=(3,$PYFLOOR_MINOR) else 1)" 2>/dev/null; then
       command -v "$c"; return 0
     fi
   done
   return 1
 }
 PYBIN="$(pick_python)" || {
-  echo "ERROR: picasso-registry needs Python >=3.10 and none was found." >&2
-  echo "Install one (e.g. deadsnakes python3.10 + python3.10-venv) and re-run," >&2
-  echo "or pass PYTHON=/path/to/python3.10 (NOT under /root)." >&2
+  echo "ERROR: picasso-registry needs Python >=3.$PYFLOOR_MINOR and none was found." >&2
+  echo "Install one (e.g. deadsnakes python3.11 + python3.11-venv) and re-run," >&2
+  echo "or pass PYTHON=/path/to/python3.11 (NOT under /root)." >&2
   exit 1
 }
 case "$PYBIN" in
   /root/*) echo "WARNING: $PYBIN is under /root; ProtectHome hides it from the '$REGISTRY_USER' user — the service WILL fail. Use a system python." >&2 ;;
 esac
 
-if [ ! -x "$VENV_DIR/bin/pip" ]; then
+# Rebuild the venv if it is missing OR too old: a venv from a previous run on
+# an older interpreter (e.g. 3.10) silently survives a floor bump and makes pip
+# reject the install ("requires a different Python"). Check its actual version.
+venv_ok() {
+  [ -x "$VENV_DIR/bin/python" ] || return 1
+  "$VENV_DIR/bin/python" -c \
+    "import sys;raise SystemExit(0 if sys.version_info[:2]>=(3,$PYFLOOR_MINOR) else 1)" \
+    2>/dev/null
+}
+if ! venv_ok; then
   log "creating venv $VENV_DIR from $PYBIN ($("$PYBIN" -V 2>&1))"
   rm -rf "$VENV_DIR"
   as_registry "$PYBIN" -m venv "$VENV_DIR"
@@ -117,9 +135,13 @@ ln -sf "$VENV_DIR/bin/picasso-registry-backfill-liveloc" \
 if [ -s "$ENV_FILE" ]; then
   log "keeping existing token file $ENV_FILE"
 else
-  log "no tokens at $ENV_FILE — minting one write ($(hostname -s)) + one read (lab-dashboard) token"
+  # Sanitize the hostname to the token-label charset, fall back if empty, so an
+  # odd/empty `hostname -s` can't make `token add` reject the label and abort.
+  HOSTLABEL="$(hostname -s 2>/dev/null | tr -cd 'A-Za-z0-9._-')"
+  HOSTLABEL="${HOSTLABEL:-registry-host}"
+  log "no tokens at $ENV_FILE — minting one write ($HOSTLABEL) + one read (lab-dashboard) token"
   as_registry "$VENV_DIR/bin/picasso-registry" token add \
-    --scope write --label "$(hostname -s)" --env-file "$ENV_FILE"
+    --scope write --label "$HOSTLABEL" --env-file "$ENV_FILE"
   as_registry "$VENV_DIR/bin/picasso-registry" token add \
     --scope read --label lab-dashboard --env-file "$ENV_FILE"
 fi

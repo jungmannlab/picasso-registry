@@ -9,7 +9,55 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
-## [0.7.0] - 2026-10-28
+### Added
+- **Containerized deploy — `deploy/install-docker.sh`.** A Docker counterpart to
+  `deploy/setup-server.sh` with the same data/token layout (DB bind-mounted at
+  `/var/lib/picasso-registry`, token file at `/etc/picasso-registry/registry.env`)
+  but no host-Python requirement — the interpreter lives in the image, so this is
+  the path for hosts without Python ≥3.11 (e.g. Ubuntu 20.04). Installs Docker if
+  missing, builds+tags the image, mints a write+read token on first run, and
+  (re)starts the container (`--restart unless-stopped`); re-running is the
+  upgrade. Tokens are mounted (not injected as `-e`) so `docker kill
+  --signal=HUP` live-reloads them. Documented in `deploy/README.md` (now covers
+  both deploy paths) and the README Container section.
+- **CI Docker workflow — `.github/workflows/docker-image.yml`.** A `smoke` job
+  on every PR/push builds the image and actually runs it (migrate on start,
+  bind `0.0.0.0` with a minted token, poll `/health`, assert the version is
+  tag-derived) — the safety net that would have caught the stale-Python-floor
+  Dockerfile bug before release. A `publish` job (gated on `smoke`) pushes to
+  `ghcr.io/<owner>/picasso-registry` on `v*` release tags, so labs can
+  `docker pull` a versioned image.
+- **`install-docker.sh` can pull a prebuilt image** via `PULL_IMAGE=…` instead
+  of cloning + building — the fast path for a new lab box (pairs with the GHCR
+  publish above).
+
+### Changed
+- **Deploy review hardening (code-review follow-ups).** The Python floor is now
+  derived from `pyproject.toml`'s `requires-python` in both deploy scripts (and
+  fed to the image via a `PYVER` build-arg) instead of being hardcoded in three
+  places, so a future floor bump can't silently drift. The CI image build now
+  asserts the reported version isn't the `0.0.1.dev0` fallback (the version
+  "safety net" previously only printed it). Branch-ref updates fast-forward to
+  the fetched remote tip and abort loudly on divergence instead of swallowing a
+  failed `git pull` (no more stale rebuilds). The container health poll waits
+  ~30s (matching CI) so a slow first-migration start doesn't emit a spurious
+  warning. Token labels sanitize `hostname -s` (fallback `registry-host`) so an
+  odd hostname can't abort the install. CI jobs share a Buildx/GHA layer cache
+  (no more double full build on release tags) and the image build uses a pip
+  cache mount so source edits don't re-fetch the dependency closure.
+
+### Fixed
+- **Python floor bumped to 3.11 in the deploy paths.** `deploy/setup-server.sh`
+  and the `Dockerfile` still required/based-on Python 3.10 after the repo floor
+  moved to `>=3.11`, so a fresh install or image build failed with
+  `requires a different Python`. The setup script now gates on ≥3.11 (and
+  rebuilds a too-old existing venv instead of reusing it); the image is now
+  `python:3.11-slim`.
+- **Container image now reports its real version.** The `Dockerfile` is now a
+  multi-stage build: a builder stage with `git` lets setuptools-scm stamp the
+  tag-derived version into a wheel, which the git-less slim runtime installs
+  offline — so an image built from a tagged checkout reports e.g. `0.7.0`
+  instead of the `0.0.1.dev0` fallback a git-less build produced.
 
 ### Added
 - **`handoff` table + dataset hand-off state machine (WP-9 Phase A).** The
