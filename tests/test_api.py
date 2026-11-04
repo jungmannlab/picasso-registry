@@ -20,6 +20,12 @@ ROUND_TRIP = {
         "laser_power_mW": 42.0,
     },
     "reagent_provenance": {"docking_design_id": "R1"},
+    "setup_config": {
+        "name": "Mercury",
+        "content_hash": "a" * 64,
+        "config_yaml": "setup: Mercury\nemulated: false\n",
+        "label": "rig-v1",
+    },
     "acquisition_run": {"id": "run-xyz", "status": "done"},
     "fov": {"pos_x": 1.5, "frame_count": 30000},
     "illumination": {"laser_nm": 560, "measured_power_mW": 42.0},
@@ -275,6 +281,64 @@ def test_duplicate_acquisition_run_conflicts(client):
     )
     again = client.post("/acquisition_run", json={"id": "dup"})
     assert again.status_code == 409
+
+
+def test_setup_config_dedup_by_content_hash_is_idempotent(client):
+    # Same content_hash -> the SAME row (stable id), HTTP 200, not a 409 and
+    # not a duplicate: a provenance reference registers once and is reused.
+    first = client.post(
+        "/setup_config",
+        json={"name": "Rig", "content_hash": "h1", "config_yaml": "a: 1"},
+    )
+    assert first.status_code == 200
+    first_id = first.json()["id"]
+
+    again = client.post(
+        "/setup_config",
+        # a different name, but the same hash -> returns the existing row.
+        json={
+            "name": "Rig-renamed",
+            "content_hash": "h1",
+            "config_yaml": "a: 1",
+        },
+    )
+    assert again.status_code == 200
+    assert again.json()["id"] == first_id
+
+    # A different hash is a distinct config and inserts a new row.
+    other = client.post(
+        "/setup_config",
+        json={"content_hash": "h2", "config_yaml": "a: 2"},
+    )
+    assert other.status_code == 200
+    assert other.json()["id"] != first_id
+    assert len(client.get("/setup_config").json()) == 2
+
+
+def test_setup_config_without_hash_always_inserts(client):
+    # No content_hash -> no dedup key -> each POST mints a fresh row.
+    a = client.post("/setup_config", json={"name": "x"})
+    b = client.post("/setup_config", json={"name": "x"})
+    assert a.status_code == b.status_code == 200
+    assert a.json()["id"] != b.json()["id"]
+
+
+def test_acquisition_run_references_setup_config(client):
+    sc = client.post(
+        "/setup_config",
+        json={"content_hash": "hh", "config_yaml": "setup: Rig"},
+    )
+    sc_id = sc.json()["id"]
+    ar = client.post(
+        "/acquisition_run",
+        json={"id": "run-sc", "setup_config_id": sc_id},
+    )
+    assert ar.status_code == 200
+    assert ar.json()["setup_config_id"] == sc_id
+    assert (
+        client.get("/acquisition_run/run-sc").json()["setup_config_id"]
+        == sc_id
+    )
 
 
 def test_analysis_run_idempotency_key_conflicts(client):

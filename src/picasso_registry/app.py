@@ -66,6 +66,13 @@ REGISTRY = [
         models.ReagentProvenance,
         crud.persist,
     ),
+    # Before acquisition_run: the FK target must persist first (bulk ingest).
+    (
+        "setup_config",
+        schemas.SetupConfig,
+        models.SetupConfig,
+        crud.persist_setup_config,
+    ),
     (
         "acquisition_run",
         schemas.AcquisitionRun,

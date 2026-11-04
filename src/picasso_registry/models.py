@@ -126,6 +126,32 @@ class ReagentProvenance(Base):
 # ── Acquisition ──────────────────────────────────────────────────────────
 
 
+class SetupConfig(Base):
+    """A versioned microscope-setup (rig) config, content-addressed.
+
+    PycroFlow's per-rig setup files are user-local / uncommitted, so a dataset
+    records *which* config produced it by referencing a row here. ``content_hash``
+    (the SHA-256 of ``config_yaml``) is the stable "version": POSTing the same
+    hash is an idempotent get-or-create (``crud.persist_setup_config`` returns
+    the existing row), so many runs reference one row instead of repeating the
+    YAML. Append-only; the UNIQUE constraint makes the dedup a hard invariant.
+    """
+
+    __tablename__ = "setup_config"
+    __table_args__ = (
+        UniqueConstraint("content_hash", name="uq_setup_config_content_hash"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str | None] = mapped_column(String)
+    content_hash: Mapped[str | None] = mapped_column(String)
+    config_yaml: Mapped[str | None] = mapped_column(String)
+    label: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    extra: Mapped[dict | None] = mapped_column(JSON)
+
+
 class AcquisitionRun(Base):
     __tablename__ = "acquisition_run"
     id: Mapped[str] = mapped_column(String, primary_key=True)  # the run_id
@@ -140,6 +166,12 @@ class AcquisitionRun(Base):
         DateTime(timezone=True)
     )
     status: Mapped[str | None] = mapped_column(String)
+    # Optional reference to a versioned setup_config row (the rig config, deduped
+    # by content hash). config_yaml below stays for the inline Phase-1 stamp /
+    # legacy rows; a setup_config_id points at the shared, content-addressed row.
+    setup_config_id: Mapped[str | None] = mapped_column(
+        ForeignKey("setup_config.id")
+    )
     pycroflow_version: Mapped[str | None] = mapped_column(String)
     mm_version: Mapped[str | None] = mapped_column(String)
     config_yaml: Mapped[str | None] = mapped_column(String)

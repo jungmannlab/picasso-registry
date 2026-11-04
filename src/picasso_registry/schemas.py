@@ -109,6 +109,19 @@ class ReagentProvenance(_ORMExtra):
 # ── Acquisition ──────────────────────────────────────────────────────────
 
 
+class SetupConfig(_ORMExtra):
+    # A versioned rig config. ``id`` is server-minted (ULID) when omitted; the
+    # POST dedups by ``content_hash`` (idempotent get-or-create) so the returned
+    # id is stable across re-registration of the same config.
+    id: str | None = None
+    name: str | None = None
+    content_hash: str | None = None
+    config_yaml: str | None = None
+    label: str | None = None
+    created_at: datetime | None = None
+    extra: dict | None = None
+
+
 class AcquisitionRun(_ORMExtra):
     # the run_id minted by PycroFlow — required, non-empty, never
     # server-minted (min_length rejects "" before it can mint a ULID).
@@ -118,6 +131,7 @@ class AcquisitionRun(_ORMExtra):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     status: str | None = None
+    setup_config_id: str | None = None
     pycroflow_version: str | None = None
     mm_version: str | None = None
     config_yaml: str | None = None
@@ -455,6 +469,7 @@ class BulkIngest(BaseModel):
     sample_tag: list[SampleTag] = []
     target_channel: list[TargetChannel] = []
     reagent_provenance: list[ReagentProvenance] = []
+    setup_config: list[SetupConfig] = []
     acquisition_run: list[AcquisitionRun] = []
     fov: list[Fov] = []
     illumination: list[Illumination] = []

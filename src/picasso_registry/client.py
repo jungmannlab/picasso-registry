@@ -70,6 +70,17 @@ class _BaseRegistry:
         """
         return self._post("/cohort_metric_range", fields)
 
+    def register_setup_config(self, **fields: Any) -> dict[str, Any]:
+        """Register (or fetch) a versioned microscope-setup config.
+
+        Pass ``content_hash`` (the SHA-256 of ``config_yaml``) + ``name`` /
+        ``config_yaml`` / ``label``. Deduped by ``content_hash``: re-posting the
+        same hash returns the existing row (stable ``id``, HTTP 200), so a
+        client registers once and references the returned ``setup_config_id``
+        on its ``acquisition_run`` rows. Idempotent, not a 409.
+        """
+        return self._post("/setup_config", fields)
+
     # WP-9 hand-off state machine ------------------------------------------
     def mark_ready(
         self,

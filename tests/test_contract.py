@@ -25,7 +25,14 @@ def test_openapi_committed_in_sync():
 
 def test_openapi_covers_core_surface():
     spec = build_spec()
-    for path in ("/cohort", "/node_defaults", "/bulk", "/metrics", "/health"):
+    for path in (
+        "/cohort",
+        "/node_defaults",
+        "/bulk",
+        "/metrics",
+        "/setup_config",
+        "/health",
+    ):
         assert path in spec["paths"], path
 
 

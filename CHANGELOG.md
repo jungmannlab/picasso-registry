@@ -9,6 +9,19 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Added
+
+- **`setup_config` record type (content-addressed rig configs) + `acquisition_run.setup_config_id`.**
+  A new `setup_config` table (`id`, `name`, `content_hash`, `config_yaml`,
+  `label`, `created_at`, `extra`) stores a versioned microscope-setup config.
+  `POST /setup_config` **dedups by `content_hash`** (idempotent get-or-create —
+  re-posting the same hash returns the existing row's id with HTTP 200, not a
+  409), via `crud.persist_setup_config` + a UNIQUE constraint. A new nullable
+  `acquisition_run.setup_config_id` references it, so a dataset points at the
+  exact, content-addressed rig config that produced it (PycroFlow's setups are
+  user-local / uncommitted). Client: `register_setup_config(**fields)`. Migration
+  `0006_setup_config`; OpenAPI regenerated; round-trip + dedup + FK tests added.
+
 ## [0.8.0] - 2026-10-30
 
 ### Added
