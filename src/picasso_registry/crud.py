@@ -163,6 +163,50 @@ def persist_taxonomy(
     return _insert(session, orm_cls(**_row(orm_cls, data)), commit=commit)
 
 
+def persist_setup_config(
+    session: Session, orm_cls: type, data: dict, *, commit: bool = True
+):
+    """Insert a setup_config, deduping by ``content_hash`` (get-or-create).
+
+    A ``content_hash`` content-addresses one rig config: re-posting the same
+    hash returns the EXISTING row (stable id, HTTP 200) instead of a duplicate,
+    so a client registers once and references the returned id across many runs.
+    Idempotent by design — not a 409 — which is what a provenance reference
+    wants. Falls back to a plain minted insert when no ``content_hash`` is
+    given. The UNIQUE constraint on ``content_hash`` is the hard backstop (a
+    genuinely concurrent double-insert 409s via :func:`_insert`).
+    """
+    row = _row(orm_cls, data)
+    content_hash = row.get("content_hash")
+
+    def _existing():
+        return (
+            session.query(orm_cls)
+            .filter(orm_cls.content_hash == content_hash)
+            .first()
+        )
+
+    if content_hash:
+        found = _existing()
+        if found is not None:
+            return found
+    if not row.get("id"):
+        row["id"] = new_id()
+    try:
+        return _insert(session, orm_cls(**row), commit=commit)
+    except Conflict:
+        # Lost the race on UNIQUE(content_hash): a concurrent insert landed
+        # between our get-miss and our insert. Return the winner's row so the
+        # POST stays idempotent (200), not a 409 — the whole point of the
+        # content-hash dedup. (A non-hash integrity error has nothing to
+        # recover and re-raises.)
+        if content_hash:
+            found = _existing()
+            if found is not None:
+                return found
+        raise
+
+
 # ── WP-9 hand-off state machine (mutable job-queue state) ─────────────────
 
 
