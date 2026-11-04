@@ -78,6 +78,12 @@ class _BaseRegistry:
         same hash returns the existing row (stable ``id``, HTTP 200), so a
         client registers once and references the returned ``setup_config_id``
         on its ``acquisition_run`` rows. Idempotent, not a 409.
+
+        Use a **synchronous** client (``RegistryClient`` / the in-memory mock)
+        for this, not the fire-and-forget ``BufferedRegistryClient``: dedup can
+        return an ``id`` different from any client-stamped one, so the caller
+        must read the returned ``id`` to link ``acquisition_run.setup_config_id``
+        — which the buffered client discards.
         """
         return self._post("/setup_config", fields)
 

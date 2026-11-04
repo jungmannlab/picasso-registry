@@ -178,17 +178,33 @@ def persist_setup_config(
     """
     row = _row(orm_cls, data)
     content_hash = row.get("content_hash")
-    if content_hash:
-        existing = (
+
+    def _existing():
+        return (
             session.query(orm_cls)
             .filter(orm_cls.content_hash == content_hash)
             .first()
         )
-        if existing is not None:
-            return existing
+
+    if content_hash:
+        found = _existing()
+        if found is not None:
+            return found
     if not row.get("id"):
         row["id"] = new_id()
-    return _insert(session, orm_cls(**row), commit=commit)
+    try:
+        return _insert(session, orm_cls(**row), commit=commit)
+    except Conflict:
+        # Lost the race on UNIQUE(content_hash): a concurrent insert landed
+        # between our get-miss and our insert. Return the winner's row so the
+        # POST stays idempotent (200), not a 409 — the whole point of the
+        # content-hash dedup. (A non-hash integrity error has nothing to
+        # recover and re-raises.)
+        if content_hash:
+            found = _existing()
+            if found is not None:
+                return found
+        raise
 
 
 # ── WP-9 hand-off state machine (mutable job-queue state) ─────────────────
