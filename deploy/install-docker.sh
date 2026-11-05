@@ -115,6 +115,36 @@ else
     -t "$IMAGE:$TAG" -t "$IMAGE:latest" "$SRC_DIR"
 fi
 
+# ---- 3. admin wrapper + a copy of this installer (for `upgrade`) ------------
+# Installed from this script's own dir, so it works in BOTH pull and build
+# modes. The admin console (picasso-registry-admin-cli / -gui) drives this
+# wrapper over SSH; `picasso-registry-admin upgrade` re-runs the copied
+# installer.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+install -d -m 755 "$APP_DIR/deploy"
+# Copy a script into place only when source != destination. On an `upgrade`
+# re-run the admin wrapper invokes the ALREADY-copied installer, so $SCRIPT_DIR
+# == $APP_DIR/deploy and `install src dest` with src==dest would error out and
+# abort under `set -e`. (Consequence: an image-only `upgrade` doesn't refresh
+# these scripts — update them by re-running install-docker.sh from a fresh
+# checkout.)
+copy_if_newer() {  # copy_if_newer <src> <dest>
+  [ -f "$1" ] || return 0
+  [ "$(readlink -f "$1")" = "$(readlink -f "$2")" ] && return 0
+  install -m 755 "$1" "$2"
+}
+copy_if_newer "$SCRIPT_DIR/install-docker.sh" "$APP_DIR/deploy/install-docker.sh"
+if [ -f "$APP_DIR/deploy/install-docker.sh" ] \
+    || [ -f "$SCRIPT_DIR/picasso-registry-admin" ]; then
+  copy_if_newer "$SCRIPT_DIR/picasso-registry-admin" \
+    "$APP_DIR/deploy/picasso-registry-admin"
+  if [ -f "$APP_DIR/deploy/picasso-registry-admin" ]; then
+    ln -sf "$APP_DIR/deploy/picasso-registry-admin" \
+      /usr/local/bin/picasso-registry-admin
+    log "admin wrapper -> /usr/local/bin/picasso-registry-admin"
+  fi
+fi
+
 # ---- 4. directories + token env file (preserve if it already has content) ---
 install -d -m 750 "$DATA_DIR" "$ETC_DIR"
 if [ -s "$ENV_FILE" ]; then

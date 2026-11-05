@@ -9,6 +9,11 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Changed
+- **CI now tests Python 3.11–3.14** (was 3.11/3.12), mirroring the monet /
+  PycroFlow matrices; `fail-fast: false` so an exploratory 3.13/3.14 leg can't
+  cancel the supported 3.11/3.12 legs.
+
 ### Added
 
 - **`setup_config` record type (content-addressed rig configs) + `acquisition_run.setup_config_id`.**
@@ -21,8 +26,17 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
   exact, content-addressed rig config that produced it (PycroFlow's setups are
   user-local / uncommitted). Client: `register_setup_config(**fields)`. Migration
   `0006_setup_config`; OpenAPI regenerated; round-trip + dedup + FK tests added.
-
-## [0.8.0] - 2026-10-30
+- **SSH admin console (`[admin]` extra) — CLI + PyQt6 GUI.** An SSH-driven admin
+  tool (`picasso-registry-admin-cli` / `picasso-registry-admin-gui`) to manage a
+  deployed registry — tokens (list/add/rotate/revoke with live SIGHUP reload),
+  status/health, logs, restart, and upgrade — **without adding any network admin
+  surface**: it drives a new server-side `picasso-registry-admin` wrapper over
+  SSH, so the authority stays "shell access to the box" (ADR 001). Layered like
+  monet's setup wizard — a Qt-free `picasso_registry.admin.core` (paramiko,
+  lazy) with thin CLI + GUI front-ends; `PyQt6` + `paramiko` live in the
+  `[admin]` extra so the base package stays dependency-free. The wrapper is
+  installed by `install-docker.sh`. Parser/command-building unit tests added
+  (no SSH/Qt needed).
 
 ### Added
 - **Containerized deploy — `deploy/install-docker.sh`.** A Docker counterpart to

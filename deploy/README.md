@@ -130,6 +130,35 @@ sudo -u registry picasso-registry token list --env-file /etc/picasso-registry/re
 
 (`list` shows scopes + labels, never the token values.)
 
+## Admin console (SSH — CLI + GUI)
+
+For the **Docker** deploy, `install-docker.sh` installs a server-side wrapper,
+`picasso-registry-admin`, that collapses the `docker run … token … &&
+docker kill -HUP` incantations into subcommands (run it on the box):
+
+```bash
+picasso-registry-admin status
+picasso-registry-admin token add --scope write --label microscope-venus
+picasso-registry-admin token list|rotate|revoke …
+picasso-registry-admin logs -n 200
+picasso-registry-admin restart
+sudo picasso-registry-admin upgrade ghcr.io/jungmannlab/picasso-registry:0.9.0
+```
+
+From your laptop, the **`[admin]` extra** (`pip install
+'picasso-registry[admin]'`) drives that wrapper over SSH — a scriptable CLI and
+a PyQt6 GUI, so there is **no network admin surface** on the registry (authority
+is your SSH access, per ADR 001):
+
+```bash
+picasso-registry-admin-cli --host mibweather status
+picasso-registry-admin-cli --host mibweather token add --scope write --label venus
+picasso-registry-admin-gui          # connection + Status/Tokens/Logs/Server tabs
+```
+
+(The SSH user needs Docker access; add `--sudo` / the GUI's "run via sudo" box
+if it needs sudo for docker. `upgrade` needs root on the box.)
+
 ## Overrides
 
 The script reads config from the environment — override inline as needed:
