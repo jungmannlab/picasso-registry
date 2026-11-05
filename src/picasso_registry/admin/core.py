@@ -94,7 +94,13 @@ def parse_status(text: str) -> ServerStatus:
             key, _, val = line.partition(":")
             raw[key.strip().lower()] = val.strip()
     state = raw.get("state", "").lower()
-    running = state == "running" or raw.get("status", "").startswith("Up")
+    # `state` is authoritative when present; only fall back to the `status`
+    # line (`Up …`) when the wrapper didn't report a state. Avoids a stale
+    # `Up … (unhealthy)` line reading as running while state says exited.
+    if state:
+        running = state == "running"
+    else:
+        running = raw.get("status", "").startswith("Up")
     health_ok = raw.get("health", "").upper().startswith("OK")
     return ServerStatus(
         running=running,
@@ -142,6 +148,10 @@ def _connect(
         username=user,
         password=password,
         key_filename=key_filename,
+        # Bound the handshake so an unreachable/filtered host fails fast
+        # instead of hanging the CLI/GUI worker indefinitely.
+        timeout=15,
+        banner_timeout=15,
     )
     # With a typed password and no key, stop paramiko trying agent/default keys
     # first and exhausting MaxAuthTries before it ever tries the password.
@@ -151,6 +161,7 @@ def _connect(
     try:
         client.connect(**connect_kwargs)
     except Exception as exc:  # paramiko raises many types; normalize
+        client.close()  # don't leak the half-open transport/socket
         raise AdminError(f"SSH connection to {user}@{host} failed: {exc}")
 
     def run(cmd: str, sudo: bool = False) -> str:
@@ -161,8 +172,12 @@ def _connect(
         chan = client.get_transport().open_session()
         chan.set_combine_stderr(True)
         chan.exec_command(cmd)
-        if sudo and sudo_password:
-            chan.sendall((sudo_password + "\n").encode())
+        if sudo:
+            # Always close stdin for `sudo -S`: with a password, send it first;
+            # WITHOUT one, the EOF makes sudo fail fast ("no password") instead
+            # of blocking forever on a prompt nobody will answer.
+            if sudo_password:
+                chan.sendall((sudo_password + "\n").encode())
             chan.shutdown_write()
         chunks: list[str] = []
         while True:
@@ -234,7 +249,12 @@ class RegistryAdmin:
 
     def close(self) -> None:
         if self._client is not None:
-            self._client.close()
+            try:
+                self._client.close()
+            except Exception:
+                # Closing a half-dead transport can raise; never let that mask
+                # the real error from the `with` body.
+                pass
             self._client = None
             self._run = None
 
@@ -269,8 +289,11 @@ class RegistryAdmin:
     def token_revoke(self, label: str) -> str:
         return self._admin("token", "revoke", "--label", label)
 
-    def logs(self, lines: int = 200) -> str:
-        return self._admin("logs", "-n", str(lines))
+    def logs(self, lines: int = 200, follow: bool = False) -> str:
+        args = ["logs", "-n", str(lines)]
+        if follow:
+            args.append("-f")
+        return self._admin(*args)
 
     def restart(self) -> str:
         return self._admin("restart")

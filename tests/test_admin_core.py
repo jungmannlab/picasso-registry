@@ -109,3 +109,42 @@ def test_admin_label_with_shell_metachars_is_quoted():
     admin._run = lambda cmd, sudo=False: calls.append((cmd, sudo)) or ""
     admin.token_revoke("a b")  # space -> must be quoted as one arg
     assert "'a b'" in calls[0][0]
+
+
+def test_parse_status_state_wins_over_stale_status_line():
+    # `state: exited` must beat a leftover `Up … (unhealthy)` status line.
+    s = parse_status("state:  exited\nstatus: Up 2 minutes (unhealthy)\n")
+    assert s.running is False
+
+
+def test_admin_logs_follow_builds_tail_and_follow():
+    calls: list[str] = []
+    admin = RegistryAdmin("h", "u")
+    admin._run = lambda cmd, sudo=False: calls.append(cmd) or ""
+    admin.logs(50, follow=True)
+    admin.logs(100)
+    assert calls[0] == "picasso-registry-admin logs -n 50 -f"
+    assert calls[1] == "picasso-registry-admin logs -n 100"
+
+
+def test_load_profile_coerces_types(tmp_path, monkeypatch):
+    from picasso_registry.admin import profile as prof
+
+    f = tmp_path / "profile.json"
+    f.write_text('{"host":"h","port":"2222","use_sudo":true,"bogus":1}')
+    monkeypatch.setenv("PR_ADMIN_PROFILE", str(f))
+    loaded = prof.load_profile()
+    assert loaded.host == "h"
+    assert loaded.port == 2222  # coerced str -> int, not left as "2222"
+    assert loaded.use_sudo is True
+    # unknown key ignored, no crash, defaults preserved
+    assert loaded.user == ""
+
+
+def test_load_profile_bad_json_returns_defaults(tmp_path, monkeypatch):
+    f = tmp_path / "profile.json"
+    f.write_text("{not valid json")
+    monkeypatch.setenv("PR_ADMIN_PROFILE", str(f))
+    from picasso_registry.admin import profile as prof
+
+    assert prof.load_profile().host == ""

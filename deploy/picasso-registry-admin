@@ -56,10 +56,13 @@ detect_port() {
 }
 
 cmd_status() {
+  # `docker ps --filter` exits 0 with no output for a missing container, so
+  # check existence explicitly (otherwise status prints an empty block + rc 0).
+  docker inspect "$CONTAINER" >/dev/null 2>&1 \
+    || die "container '$CONTAINER' not found — is it deployed? (set PR_ADMIN_CONTAINER)"
   echo "container: $CONTAINER"
   docker ps -a --filter "name=^/${CONTAINER}$" \
-    --format 'state:     {{.State}}\nstatus:    {{.Status}}\nimage:     {{.Image}}\nports:     {{.Ports}}' \
-    || die "container '$CONTAINER' not found"
+    --format 'state:     {{.State}}\nstatus:    {{.Status}}\nimage:     {{.Image}}\nports:     {{.Ports}}'
   local port; port="$(detect_port)"
   if [ -n "$port" ]; then
     if curl -fsS "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
@@ -86,10 +89,17 @@ token_run() {
 }
 
 # SIGHUP the running service so an add/rotate/revoke applies without downtime.
+# The token file is ALREADY written at this point, so a failed reload must warn,
+# not abort under `set -e` (else the operator sees a bare rc=1 and may not
+# realize the change landed on disk but wasn't applied live).
 reload() {
   if container_running; then
-    docker kill --signal=HUP "$CONTAINER" >/dev/null \
-      && echo "reloaded: live token map (SIGHUP, no downtime)"
+    if docker kill --signal=HUP "$CONTAINER" >/dev/null 2>&1; then
+      echo "reloaded: live token map (SIGHUP, no downtime)"
+    else
+      echo "warning: token file updated but SIGHUP reload failed — restart" \
+        "the container to apply (docker restart $CONTAINER)" >&2
+    fi
   else
     echo "note: container not running — tokens apply on next start" >&2
   fi
@@ -108,7 +118,23 @@ cmd_token() {
   esac
 }
 
-cmd_logs() { docker logs "$@" "$CONTAINER"; }
+# Present a stable `-n N`/`-f` interface and translate to docker's flags
+# (`docker logs` uses --tail, NOT -n). Keeps docker specifics in the wrapper.
+cmd_logs() {
+  local tail=200 follow=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -n | --lines | --tail) tail="${2:-200}"; shift 2 || shift ;;
+      -f | --follow) follow=1; shift ;;
+      *) shift ;;
+    esac
+  done
+  if [ -n "$follow" ]; then
+    docker logs --tail "$tail" -f "$CONTAINER"
+  else
+    docker logs --tail "$tail" "$CONTAINER"
+  fi
+}
 
 cmd_restart() {
   docker restart "$CONTAINER" >/dev/null && echo "restarted: $CONTAINER"
@@ -120,13 +146,22 @@ cmd_upgrade() {
   [ -f "$INSTALLER" ] \
     || die "installer not found at $INSTALLER (set PR_ADMIN_INSTALLER)"
   [ "$(id -u)" -eq 0 ] || die "upgrade needs root — run via sudo"
-  local port; port="$(detect_port)"
-  echo "upgrading $CONTAINER -> $ref (port ${port:-8000}) via install-docker.sh"
-  PULL_IMAGE="$ref" REGISTRY_PORT="${port:-8000}" bash "$INSTALLER"
+  # Honor an explicit REGISTRY_PORT, else detect from the running container.
+  # Never silently fall back to 8000: a stopped/absent container would then be
+  # rebound to the wrong host port, dropping a customized one.
+  local port; port="${REGISTRY_PORT:-$(detect_port)}"
+  [ -n "$port" ] || die "can't detect the host port (container stopped/absent)\
+ — re-run with REGISTRY_PORT set, e.g. REGISTRY_PORT=8001"
+  echo "upgrading $CONTAINER -> $ref (port $port) via install-docker.sh"
+  PULL_IMAGE="$ref" REGISTRY_PORT="$port" bash "$INSTALLER"
 }
 
+# Print the leading comment block (after the shebang) as help — stop at the
+# first non-comment line so `set -euo pipefail`/variable assignments don't leak.
 usage() {
-  sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//'
+  awk 'NR==1 { next }
+       /^#/  { sub(/^# ?/, ""); print; next }
+       { exit }' "$0"
 }
 
 main() {

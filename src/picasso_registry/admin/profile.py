@@ -33,14 +33,30 @@ class Profile:
 
 
 def load_profile() -> Profile:
-    """Return the saved profile, or defaults if none/unreadable."""
+    """Return the saved profile, or defaults if none/unreadable.
+
+    Coerces types (a hand-edited ``"port": "22"`` must not reach paramiko as a
+    str) and ignores unknown/wrong-typed keys rather than raising.
+    """
     try:
         with open(profile_path(), encoding="utf-8") as fh:
             data = json.load(fh)
     except (OSError, ValueError):
         return Profile()
-    allowed = {f for f in Profile().__dict__}
-    return Profile(**{k: v for k, v in data.items() if k in allowed})
+    if not isinstance(data, dict):
+        return Profile()
+    p = Profile()
+    for key in ("host", "user", "identity"):
+        if isinstance(data.get(key), str):
+            setattr(p, key, data[key])
+    try:
+        if "port" in data:
+            p.port = int(data["port"])
+    except (TypeError, ValueError):
+        pass
+    if "use_sudo" in data:
+        p.use_sudo = bool(data["use_sudo"])
+    return p
 
 
 def save_profile(profile: Profile) -> None:

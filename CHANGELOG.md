@@ -9,6 +9,11 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+### Changed
+- **CI now tests Python 3.11–3.14** (was 3.11/3.12), mirroring the monet /
+  PycroFlow matrices; `fail-fast: false` so an exploratory 3.13/3.14 leg can't
+  cancel the supported 3.11/3.12 legs.
+
 ### Added
 
 - **`setup_config` record type (content-addressed rig configs) + `acquisition_run.setup_config_id`.**

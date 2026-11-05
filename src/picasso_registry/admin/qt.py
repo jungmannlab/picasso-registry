@@ -254,33 +254,47 @@ class AdminWindow(QMainWindow):
             use_sudo=self.use_sudo.isChecked(),
         )
 
-    def _admin_factory(self, on_output) -> RegistryAdmin:
-        p = self._current_profile()
-        if not p.host or not p.user:
-            raise RuntimeError("set a host and user first")
-        return RegistryAdmin(
-            p.host,
-            p.user,
-            password=self.password.text() or None,
-            key_filename=p.identity or None,
-            port=p.port,
-            use_sudo=p.use_sudo,
-            on_output=on_output,
-        )
-
     # -- the async runner (single worker, re-entry guarded) ---------------
-    def _run(self, op, on_done, *, busy: str) -> None:
+    def _run(self, action, on_done, *, busy: str) -> None:
+        """Run ``action(admin) -> result`` off the UI thread.
+
+        ALL connection inputs are snapshotted here, on the GUI thread; the
+        worker closure only touches the plain snapshot + the built
+        ``RegistryAdmin``, never a Qt widget (widgets aren't thread-safe).
+        """
         if self._worker is not None and self._worker.isRunning():
             self.activity.appendPlainText("(busy — wait for the current task)")
             return
-        save_profile(self._current_profile())
+        profile = self._current_profile()
+        password = self.password.text() or None
+        if not profile.host or not profile.user:
+            QMessageBox.information(
+                self, "Connect", "Set a host and user first."
+            )
+            return
+        save_profile(profile)
         self.activity.appendPlainText(f"• {busy}")
         self.setCursor(Qt.CursorShape.WaitCursor)
-        worker = _Worker(op, self)
+
+        def fn(on_output):
+            admin = RegistryAdmin(
+                profile.host,
+                profile.user,
+                password=password,
+                key_filename=profile.identity or None,
+                port=profile.port,
+                use_sudo=profile.use_sudo,
+                on_output=on_output,
+            )
+            with admin:
+                return action(admin)
+
+        worker = _Worker(fn, self)
         worker.output.connect(self._append_activity)
         worker.done.connect(on_done)
         worker.failed.connect(self._on_failed)
-        worker.finished.connect(self._on_finished)
+        worker.finished.connect(lambda w=worker: self._on_finished(w))
+        worker.finished.connect(worker.deleteLater)
         self._worker = worker
         worker.start()
 
@@ -293,16 +307,16 @@ class AdminWindow(QMainWindow):
         self.activity.appendPlainText(f"✗ {msg}")
         QMessageBox.critical(self, "Operation failed", msg)
 
-    def _on_finished(self) -> None:
+    def _on_finished(self, worker) -> None:
         self.unsetCursor()
-        self._worker = None
+        # Only clear if this is STILL the current worker: a done-slot may have
+        # started a new worker before this (older) one's finished fired, and we
+        # must not drop the new worker's reference.
+        if self._worker is worker:
+            self._worker = None
 
     # -- actions ----------------------------------------------------------
     def _on_test(self) -> None:
-        def op(on_output):
-            with self._admin_factory(on_output) as a:
-                return a.status()
-
         def done(status):
             mark = "running" if status.running else "DOWN"
             health = "ok" if status.health_ok else "unreachable"
@@ -311,20 +325,16 @@ class AdminWindow(QMainWindow):
             lines = [f"{k}: {v}" for k, v in status.raw.items()]
             self.status_view.setPlainText("\n".join(lines))
 
-        self._run(op, done, busy="checking status")
+        self._run(lambda a: a.status(), done, busy="checking status")
 
     def _refresh_tokens(self) -> None:
-        def op(on_output):
-            with self._admin_factory(on_output) as a:
-                return a.token_list()
-
         def done(entries):
             self.token_table.setRowCount(len(entries))
             for r, e in enumerate(entries):
                 self.token_table.setItem(r, 0, QTableWidgetItem(e.scope))
                 self.token_table.setItem(r, 1, QTableWidgetItem(e.label))
 
-        self._run(op, done, busy="listing tokens")
+        self._run(lambda a: a.token_list(), done, busy="listing tokens")
 
     def _selected_label(self) -> str | None:
         row = self.token_table.currentRow()
@@ -341,12 +351,11 @@ class AdminWindow(QMainWindow):
         scope, label = dlg.values()
         if not label:
             return
-
-        def op(on_output):
-            with self._admin_factory(on_output) as a:
-                return a.token_add(scope, label)
-
-        self._run(op, self._after_mint, busy=f"minting {scope} token {label}")
+        self._run(
+            lambda a: a.token_add(scope, label),
+            self._after_mint,
+            busy=f"minting {scope} token {label}",
+        )
 
     def _rotate_token(self) -> None:
         label = self._selected_label()
@@ -359,12 +368,11 @@ class AdminWindow(QMainWindow):
             != QMessageBox.StandardButton.Yes
         ):
             return
-
-        def op(on_output):
-            with self._admin_factory(on_output) as a:
-                return a.token_rotate(label)
-
-        self._run(op, self._after_mint, busy=f"rotating {label}")
+        self._run(
+            lambda a: a.token_rotate(label),
+            self._after_mint,
+            busy=f"rotating {label}",
+        )
 
     def _revoke_token(self) -> None:
         label = self._selected_label()
@@ -377,15 +385,11 @@ class AdminWindow(QMainWindow):
             != QMessageBox.StandardButton.Yes
         ):
             return
-
-        def op(on_output):
-            with self._admin_factory(on_output) as a:
-                return a.token_revoke(label)
-
-        def done(_):
-            self._refresh_tokens()
-
-        self._run(op, done, busy=f"revoking {label}")
+        self._run(
+            lambda a: a.token_revoke(label),
+            lambda _: self._refresh_tokens(),
+            busy=f"revoking {label}",
+        )
 
     def _after_mint(self, output: str) -> None:
         from .core import parse_minted_token
@@ -407,15 +411,11 @@ class AdminWindow(QMainWindow):
     def _tail_logs(self) -> None:
         n = self.log_lines.value()
 
-        def op(on_output):
-            with self._admin_factory(on_output) as a:
-                return a.logs(n)
-
         def done(text):
             self.log_view.setPlainText(text)
             self.log_view.moveCursor(QTextCursor.MoveOperation.End)
 
-        self._run(op, done, busy=f"tailing {n} log lines")
+        self._run(lambda a: a.logs(n), done, busy=f"tailing {n} log lines")
 
     def _restart(self) -> None:
         if (
@@ -425,12 +425,11 @@ class AdminWindow(QMainWindow):
             != QMessageBox.StandardButton.Yes
         ):
             return
-
-        def op(on_output):
-            with self._admin_factory(on_output) as a:
-                return a.restart()
-
-        self._run(op, lambda _: self._on_test(), busy="restarting")
+        self._run(
+            lambda a: a.restart(),
+            lambda _: self._on_test(),
+            busy="restarting",
+        )
 
     def _upgrade(self) -> None:
         ref = self.upgrade_ref.text().strip()
@@ -444,12 +443,11 @@ class AdminWindow(QMainWindow):
             != QMessageBox.StandardButton.Yes
         ):
             return
-
-        def op(on_output):
-            with self._admin_factory(on_output) as a:
-                return a.upgrade(ref)
-
-        self._run(op, lambda _: self._on_test(), busy=f"upgrading to {ref}")
+        self._run(
+            lambda a: a.upgrade(ref),
+            lambda _: self._on_test(),
+            busy=f"upgrading to {ref}",
+        )
 
 
 def _install_excepthook() -> None:
@@ -460,7 +458,11 @@ def _install_excepthook() -> None:
     def hook(exc_type, exc, tb):
         msg = "".join(traceback.format_exception(exc_type, exc, tb))
         try:
-            QMessageBox.critical(None, "Unexpected error", msg)
+            # A modal dialog is only safe from the GUI thread with a live app;
+            # an exception on a secondary thread / during teardown just logs.
+            app = QApplication.instance()
+            if app is not None and QThread.currentThread() == app.thread():
+                QMessageBox.critical(None, "Unexpected error", msg)
         finally:
             sys.__excepthook__(exc_type, exc, tb)
 

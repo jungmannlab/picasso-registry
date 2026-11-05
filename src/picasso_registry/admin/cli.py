@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
             return _run_token(admin, args)
         if args.cmd == "logs":
             with admin:
-                out = admin.logs(args.lines)
+                out = admin.logs(args.lines, follow=args.follow)
             if not stream:
                 print(out.rstrip())
             return 0
