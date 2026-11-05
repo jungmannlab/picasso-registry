@@ -9,6 +9,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-05
+
 ### Changed
 - **CI now tests Python 3.11–3.14** (was 3.11/3.12), mirroring the monet /
   PycroFlow matrices; `fail-fast: false` so an exploratory 3.13/3.14 leg can't
@@ -37,6 +39,8 @@ new `[x.y.z]` section dated today, then `git tag vx.y.z`.
   `[admin]` extra so the base package stays dependency-free. The wrapper is
   installed by `install-docker.sh`. Parser/command-building unit tests added
   (no SSH/Qt needed).
+
+## [0.8.0] - 2026-10-30
 
 ### Added
 - **Containerized deploy — `deploy/install-docker.sh`.** A Docker counterpart to
