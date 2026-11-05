@@ -45,6 +45,12 @@ server = [
     # lazy about it, so [auth] and the base package stay dotenv-free)
     "python-dotenv>=1.0",
 ]
+# The SSH admin console (picasso_registry.admin): a laptop-side CLI + PyQt6 GUI
+# that drive the server-side `picasso-registry-admin` wrapper over SSH. Qt +
+# paramiko only — pins shared with monet's GUI/setup extras so the stack stays
+# consistent. The admin PARSING core imports neither at module load (both lazy),
+# so `import picasso_registry.admin` works without this extra.
+admin = ["PyQt6>=6.10.2,<7", "paramiko>=3"]
 # `test` gives dependent repos the in-memory mock (picasso_registry.testing),
 # which drives the real app through Starlette's TestClient — so it needs the full
 # server stack plus the clients and httpx.
@@ -63,6 +69,10 @@ dev = [
 picasso-registry = "picasso_registry.cli:main"
 picasso-registry-export-openapi = "picasso_registry.export_openapi:main"
 picasso-registry-backfill-liveloc = "picasso_registry.backfill_liveloc:main"
+# Laptop-side admin console ([admin] extra). The GUI dispatches through the same
+# console entry group; both drive the server-side picasso-registry-admin wrapper.
+picasso-registry-admin-cli = "picasso_registry.admin.cli:main"
+picasso-registry-admin-gui = "picasso_registry.admin.qt:main"
 
 [tool.setuptools_scm]
 write_to = "src/picasso_registry/_version.py"
